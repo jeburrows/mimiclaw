@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include "esp_log.h"
 #include "esp_http_client.h"
+#include "esp_crt_bundle.h"
 #include "nvs.h"
 #include "cJSON.h"
 
@@ -188,6 +189,7 @@ esp_err_t llm_chat(const char *system_prompt, const char *messages_json,
         .timeout_ms = 120 * 1000,   /* 2 min timeout for long responses */
         .buffer_size = 4096,
         .buffer_size_tx = 4096,
+        .crt_bundle_attach = esp_crt_bundle_attach,
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&config);

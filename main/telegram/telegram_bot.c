@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include "esp_log.h"
 #include "esp_http_client.h"
+#include "esp_crt_bundle.h"
 #include "nvs.h"
 #include "cJSON.h"
 
@@ -61,6 +62,7 @@ static char *tg_api_call(const char *method, const char *post_data)
         .timeout_ms = (MIMI_TG_POLL_TIMEOUT_S + 5) * 1000,
         .buffer_size = 2048,
         .buffer_size_tx = 2048,
+        .crt_bundle_attach = esp_crt_bundle_attach,
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&config);

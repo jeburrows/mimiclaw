@@ -5,7 +5,7 @@
 #include <stdbool.h>
 
 /**
- * Initialize proxy module — loads config from NVS.
+ * Initialize proxy module.
  */
 esp_err_t http_proxy_init(void);
 
@@ -13,16 +13,6 @@ esp_err_t http_proxy_init(void);
  * Returns true if a proxy host:port is configured.
  */
 bool http_proxy_is_enabled(void);
-
-/**
- * Save proxy host and port to NVS.
- */
-esp_err_t http_proxy_set(const char *host, uint16_t port);
-
-/**
- * Remove proxy config from NVS.
- */
-esp_err_t http_proxy_clear(void);
 
 /* ── Proxied HTTPS connection ─────────────────────────────────── */
 

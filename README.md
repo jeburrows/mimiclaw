@@ -66,7 +66,7 @@ idf.py set-target esp32s3
 
 ### Configure
 
-**Option A: Config file (recommended)** — fill in once, baked into firmware at build time:
+All configuration is done through `mimi_secrets.h` at build time:
 
 ```bash
 cp main/mimi_secrets.h.example main/mimi_secrets.h
@@ -91,39 +91,16 @@ idf.py build
 idf.py -p /dev/ttyACM0 flash monitor
 ```
 
-Config file values have the **highest priority** — they override anything set via CLI.
-
-> **Note:** After editing `mimi_secrets.h`, run `touch main/mimi_config.h` before `idf.py build` to force recompilation.
-
-**Option B: Serial CLI** — configure at runtime after flashing:
-
-```bash
-idf.py build
-idf.py -p /dev/ttyACM0 flash monitor
-```
-
-```
-mimi> wifi_set YourWiFiName YourWiFiPassword
-mimi> set_tg_token 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
-mimi> set_api_key sk-ant-api03-xxxxx
-mimi> set_search_key BSA-xxxxx              # optional: Brave Search API key for web_search
-mimi> restart
-```
-
-CLI values are stored in NVS (persistent flash) and used when no config file value is set.
+> **Important:** After editing `mimi_secrets.h`, you must do a full rebuild: `idf.py fullclean && idf.py build`
 
 ### CLI Commands
 
+The serial CLI provides debug and maintenance commands:
+
 ```
-mimi> wifi_set <ssid> <pass>   # set WiFi credentials
 mimi> wifi_status              # am I connected?
-mimi> set_tg_token <token>     # set Telegram bot token
-mimi> set_api_key <key>        # set Anthropic API key
-mimi> set_model claude-opus-4-6 # use a different model
-mimi> set_search_key <key>     # set Brave Search API key (for web_search tool)
-mimi> set_proxy 10.0.0.1 7897  # route through HTTP proxy
-mimi> clear_proxy              # remove proxy, connect directly
 mimi> memory_read              # see what the bot remembers
+mimi> memory_write "content"   # write to MEMORY.md
 mimi> heap_info                # how much RAM is free?
 mimi> session_list             # list all chat sessions
 mimi> session_clear 12345      # wipe a conversation
@@ -151,7 +128,7 @@ MimiClaw uses Anthropic's tool use protocol — Claude can call tools during a c
 | `web_search` | Search the web via Brave Search API for current information |
 | `get_current_time` | Fetch current date/time via HTTP and set the system clock |
 
-To enable web search, set a [Brave Search API key](https://brave.com/search/api/) in your config file or via CLI (`set_search_key`).
+To enable web search, set a [Brave Search API key](https://brave.com/search/api/) via `MIMI_SECRET_SEARCH_KEY` in `mimi_secrets.h`.
 
 ## Also Included
 

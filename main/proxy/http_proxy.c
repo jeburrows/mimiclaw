@@ -9,7 +9,6 @@
 #include <unistd.h>
 
 #include "esp_log.h"
-#include "nvs.h"
 #include "esp_tls.h"
 #include "esp_crt_bundle.h"
 
@@ -21,26 +20,14 @@ __attribute__((constructor)) static void proxy_log_level(void)
     esp_log_level_set(TAG, ESP_LOG_WARN);
 }
 
-/* ── Config (cached from NVS) ─────────────────────────────────── */
-
 static char     s_proxy_host[64] = {0};
 static uint16_t s_proxy_port     = 0;
 
 esp_err_t http_proxy_init(void)
 {
-    /* Build-time secrets take highest priority */
     if (MIMI_SECRET_PROXY_HOST[0] != '\0' && MIMI_SECRET_PROXY_PORT[0] != '\0') {
         strncpy(s_proxy_host, MIMI_SECRET_PROXY_HOST, sizeof(s_proxy_host) - 1);
         s_proxy_port = (uint16_t)atoi(MIMI_SECRET_PROXY_PORT);
-    } else {
-        nvs_handle_t nvs;
-        esp_err_t err = nvs_open(MIMI_NVS_PROXY, NVS_READONLY, &nvs);
-        if (err == ESP_OK) {
-            size_t len = sizeof(s_proxy_host);
-            nvs_get_str(nvs, MIMI_NVS_KEY_PROXY_HOST, s_proxy_host, &len);
-            nvs_get_u16(nvs, MIMI_NVS_KEY_PROXY_PORT, &s_proxy_port);
-            nvs_close(nvs);
-        }
     }
 
     if (s_proxy_host[0] && s_proxy_port) {
@@ -54,36 +41,6 @@ esp_err_t http_proxy_init(void)
 bool http_proxy_is_enabled(void)
 {
     return s_proxy_host[0] != '\0' && s_proxy_port != 0;
-}
-
-esp_err_t http_proxy_set(const char *host, uint16_t port)
-{
-    nvs_handle_t nvs;
-    ESP_ERROR_CHECK(nvs_open(MIMI_NVS_PROXY, NVS_READWRITE, &nvs));
-    ESP_ERROR_CHECK(nvs_set_str(nvs, MIMI_NVS_KEY_PROXY_HOST, host));
-    ESP_ERROR_CHECK(nvs_set_u16(nvs, MIMI_NVS_KEY_PROXY_PORT, port));
-    ESP_ERROR_CHECK(nvs_commit(nvs));
-    nvs_close(nvs);
-
-    strncpy(s_proxy_host, host, sizeof(s_proxy_host) - 1);
-    s_proxy_port = port;
-    ESP_LOGI(TAG, "Proxy set to %s:%d", s_proxy_host, s_proxy_port);
-    return ESP_OK;
-}
-
-esp_err_t http_proxy_clear(void)
-{
-    nvs_handle_t nvs;
-    ESP_ERROR_CHECK(nvs_open(MIMI_NVS_PROXY, NVS_READWRITE, &nvs));
-    nvs_erase_key(nvs, MIMI_NVS_KEY_PROXY_HOST);
-    nvs_erase_key(nvs, MIMI_NVS_KEY_PROXY_PORT);
-    nvs_commit(nvs);
-    nvs_close(nvs);
-
-    s_proxy_host[0] = '\0';
-    s_proxy_port = 0;
-    ESP_LOGI(TAG, "Proxy cleared");
-    return ESP_OK;
 }
 
 /* ── Proxied TLS connection ───────────────────────────────────── */

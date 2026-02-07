@@ -36,7 +36,7 @@
 ### [ ] Telegram User Allowlist (allow_from)
 - **nanobot**: `channels/base.py` L59-82 — `is_allowed()` checks sender_id against allow_list
 - **MimiClaw**: No authentication; anyone can message the bot and consume API credits
-- **Recommendation**: Store allow_from list in NVS, filter in `process_updates()`
+- **Recommendation**: Store allow_from list in `mimi_secrets.h` as a build-time define, filter in `process_updates()`
 
 ### [ ] Telegram Markdown to HTML Conversion
 - **nanobot**: `channels/telegram.py` L16-76 — `_markdown_to_telegram_html()` full converter: code blocks, inline code, bold, italic, links, strikethrough, lists
@@ -105,7 +105,7 @@
 - **Recommendation**: Requires extra HTTPS request to Whisper API: download Telegram voice -> forward -> get text
 
 ### [x] ~~Build-time Config File~~
-- Implemented: `mimi_secrets.h` — build-time credentials with highest priority over NVS/CLI
+- Implemented: `mimi_secrets.h` — sole configuration method (build-time only, no NVS/CLI)
 - Replaces need for YAML config; suitable for MCU workflow
 
 ### [ ] WebSocket Gateway Protocol Enhancement
@@ -124,7 +124,7 @@
 - **Recommendation**: Low priority, Telegram is sufficient
 
 ### [x] ~~Telegram Proxy Support (HTTP CONNECT)~~
-- Implemented: HTTP CONNECT tunnel via `proxy/http_proxy.c`, configurable via NVS + CLI (`set_proxy`/`clear_proxy`)
+- Implemented: HTTP CONNECT tunnel via `proxy/http_proxy.c`, configurable via `mimi_secrets.h` (`MIMI_SECRET_PROXY_HOST`/`MIMI_SECRET_PROXY_PORT`)
 
 ### [ ] Session Metadata Persistence
 - **nanobot**: `session/manager.py` L136-153 — session file includes metadata line (created_at, updated_at)
@@ -144,13 +144,12 @@
 - [x] Memory Store (MEMORY.md + daily notes)
 - [x] Session Manager (JSONL per chat_id, ring buffer history)
 - [x] WebSocket Gateway (port 18789, JSON protocol)
-- [x] Serial CLI (esp_console, 15 commands)
+- [x] Serial CLI (esp_console, debug/maintenance commands)
 - [x] HTTP CONNECT Proxy (Telegram + Claude API + Brave Search via proxy tunnel)
 - [x] OTA Update
-- [x] WiFi Manager (NVS credentials, exponential backoff)
+- [x] WiFi Manager (build-time credentials, exponential backoff)
 - [x] SPIFFS storage
-- [x] Build-time config (`mimi_secrets.h`, highest priority over NVS)
-- [x] NVS configuration (token, API key, model, search key)
+- [x] Build-time config (`mimi_secrets.h`, sole configuration method)
 
 ---
 

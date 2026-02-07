@@ -134,10 +134,10 @@ void app_main(void)
 
             ESP_LOGI(TAG, "All services started!");
         } else {
-            ESP_LOGW(TAG, "WiFi connection timeout. Configure via CLI: wifi_set <SSID> <PASS>");
+            ESP_LOGW(TAG, "WiFi connection timeout. Check MIMI_SECRET_WIFI_SSID in mimi_secrets.h");
         }
     } else {
-        ESP_LOGW(TAG, "No WiFi credentials. Configure via CLI: wifi_set <SSID> <PASS>");
+        ESP_LOGW(TAG, "No WiFi credentials. Set MIMI_SECRET_WIFI_SSID in mimi_secrets.h");
     }
 
     ESP_LOGI(TAG, "MimiClaw ready. Type 'help' for CLI commands.");

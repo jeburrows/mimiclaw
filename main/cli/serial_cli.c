@@ -1,12 +1,8 @@
 #include "serial_cli.h"
 #include "mimi_config.h"
 #include "wifi/wifi_manager.h"
-#include "telegram/telegram_bot.h"
-#include "llm/llm_proxy.h"
 #include "memory/memory_store.h"
 #include "memory/session_mgr.h"
-#include "proxy/http_proxy.h"
-#include "tools/tool_web_search.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -18,85 +14,11 @@
 
 static const char *TAG = "cli";
 
-/* --- wifi_set command --- */
-static struct {
-    struct arg_str *ssid;
-    struct arg_str *password;
-    struct arg_end *end;
-} wifi_set_args;
-
-static int cmd_wifi_set(int argc, char **argv)
-{
-    int nerrors = arg_parse(argc, argv, (void **)&wifi_set_args);
-    if (nerrors != 0) {
-        arg_print_errors(stderr, wifi_set_args.end, argv[0]);
-        return 1;
-    }
-    wifi_manager_set_credentials(wifi_set_args.ssid->sval[0],
-                                  wifi_set_args.password->sval[0]);
-    printf("WiFi credentials saved. Restart to apply.\n");
-    return 0;
-}
-
 /* --- wifi_status command --- */
 static int cmd_wifi_status(int argc, char **argv)
 {
     printf("WiFi connected: %s\n", wifi_manager_is_connected() ? "yes" : "no");
     printf("IP: %s\n", wifi_manager_get_ip());
-    return 0;
-}
-
-/* --- set_tg_token command --- */
-static struct {
-    struct arg_str *token;
-    struct arg_end *end;
-} tg_token_args;
-
-static int cmd_set_tg_token(int argc, char **argv)
-{
-    int nerrors = arg_parse(argc, argv, (void **)&tg_token_args);
-    if (nerrors != 0) {
-        arg_print_errors(stderr, tg_token_args.end, argv[0]);
-        return 1;
-    }
-    telegram_set_token(tg_token_args.token->sval[0]);
-    printf("Telegram bot token saved.\n");
-    return 0;
-}
-
-/* --- set_api_key command --- */
-static struct {
-    struct arg_str *key;
-    struct arg_end *end;
-} api_key_args;
-
-static int cmd_set_api_key(int argc, char **argv)
-{
-    int nerrors = arg_parse(argc, argv, (void **)&api_key_args);
-    if (nerrors != 0) {
-        arg_print_errors(stderr, api_key_args.end, argv[0]);
-        return 1;
-    }
-    llm_set_api_key(api_key_args.key->sval[0]);
-    printf("API key saved.\n");
-    return 0;
-}
-
-/* --- set_model command --- */
-static struct {
-    struct arg_str *model;
-    struct arg_end *end;
-} model_args;
-
-static int cmd_set_model(int argc, char **argv)
-{
-    int nerrors = arg_parse(argc, argv, (void **)&model_args);
-    if (nerrors != 0) {
-        arg_print_errors(stderr, model_args.end, argv[0]);
-        return 1;
-    }
-    llm_set_model(model_args.model->sval[0]);
-    printf("Model set.\n");
     return 0;
 }
 
@@ -176,51 +98,6 @@ static int cmd_heap_info(int argc, char **argv)
     return 0;
 }
 
-/* --- set_proxy command --- */
-static struct {
-    struct arg_str *host;
-    struct arg_int *port;
-    struct arg_end *end;
-} proxy_args;
-
-static int cmd_set_proxy(int argc, char **argv)
-{
-    int nerrors = arg_parse(argc, argv, (void **)&proxy_args);
-    if (nerrors != 0) {
-        arg_print_errors(stderr, proxy_args.end, argv[0]);
-        return 1;
-    }
-    http_proxy_set(proxy_args.host->sval[0], (uint16_t)proxy_args.port->ival[0]);
-    printf("Proxy set. Restart to apply.\n");
-    return 0;
-}
-
-/* --- clear_proxy command --- */
-static int cmd_clear_proxy(int argc, char **argv)
-{
-    http_proxy_clear();
-    printf("Proxy cleared. Restart to apply.\n");
-    return 0;
-}
-
-/* --- set_search_key command --- */
-static struct {
-    struct arg_str *key;
-    struct arg_end *end;
-} search_key_args;
-
-static int cmd_set_search_key(int argc, char **argv)
-{
-    int nerrors = arg_parse(argc, argv, (void **)&search_key_args);
-    if (nerrors != 0) {
-        arg_print_errors(stderr, search_key_args.end, argv[0]);
-        return 1;
-    }
-    tool_web_search_set_key(search_key_args.key->sval[0]);
-    printf("Search API key saved.\n");
-    return 0;
-}
-
 /* --- restart command --- */
 static int cmd_restart(int argc, char **argv)
 {
@@ -244,18 +121,6 @@ esp_err_t serial_cli_init(void)
 
     /* Register commands */
 
-    /* wifi_set */
-    wifi_set_args.ssid = arg_str1(NULL, NULL, "<ssid>", "WiFi SSID");
-    wifi_set_args.password = arg_str1(NULL, NULL, "<password>", "WiFi password");
-    wifi_set_args.end = arg_end(2);
-    esp_console_cmd_t wifi_set_cmd = {
-        .command = "wifi_set",
-        .help = "Set WiFi SSID and password",
-        .func = &cmd_wifi_set,
-        .argtable = &wifi_set_args,
-    };
-    esp_console_cmd_register(&wifi_set_cmd);
-
     /* wifi_status */
     esp_console_cmd_t wifi_status_cmd = {
         .command = "wifi_status",
@@ -263,39 +128,6 @@ esp_err_t serial_cli_init(void)
         .func = &cmd_wifi_status,
     };
     esp_console_cmd_register(&wifi_status_cmd);
-
-    /* set_tg_token */
-    tg_token_args.token = arg_str1(NULL, NULL, "<token>", "Telegram bot token");
-    tg_token_args.end = arg_end(1);
-    esp_console_cmd_t tg_token_cmd = {
-        .command = "set_tg_token",
-        .help = "Set Telegram bot token",
-        .func = &cmd_set_tg_token,
-        .argtable = &tg_token_args,
-    };
-    esp_console_cmd_register(&tg_token_cmd);
-
-    /* set_api_key */
-    api_key_args.key = arg_str1(NULL, NULL, "<key>", "Anthropic API key");
-    api_key_args.end = arg_end(1);
-    esp_console_cmd_t api_key_cmd = {
-        .command = "set_api_key",
-        .help = "Set Claude API key",
-        .func = &cmd_set_api_key,
-        .argtable = &api_key_args,
-    };
-    esp_console_cmd_register(&api_key_cmd);
-
-    /* set_model */
-    model_args.model = arg_str1(NULL, NULL, "<model>", "Model identifier");
-    model_args.end = arg_end(1);
-    esp_console_cmd_t model_cmd = {
-        .command = "set_model",
-        .help = "Set LLM model (default: " MIMI_LLM_DEFAULT_MODEL ")",
-        .func = &cmd_set_model,
-        .argtable = &model_args,
-    };
-    esp_console_cmd_register(&model_cmd);
 
     /* memory_read */
     esp_console_cmd_t mem_read_cmd = {
@@ -342,37 +174,6 @@ esp_err_t serial_cli_init(void)
         .func = &cmd_heap_info,
     };
     esp_console_cmd_register(&heap_cmd);
-
-    /* set_search_key */
-    search_key_args.key = arg_str1(NULL, NULL, "<key>", "Brave Search API key");
-    search_key_args.end = arg_end(1);
-    esp_console_cmd_t search_key_cmd = {
-        .command = "set_search_key",
-        .help = "Set Brave Search API key for web_search tool",
-        .func = &cmd_set_search_key,
-        .argtable = &search_key_args,
-    };
-    esp_console_cmd_register(&search_key_cmd);
-
-    /* set_proxy */
-    proxy_args.host = arg_str1(NULL, NULL, "<host>", "Proxy host/IP");
-    proxy_args.port = arg_int1(NULL, NULL, "<port>", "Proxy port");
-    proxy_args.end = arg_end(2);
-    esp_console_cmd_t proxy_cmd = {
-        .command = "set_proxy",
-        .help = "Set HTTP proxy (e.g. set_proxy 192.168.1.83 7897)",
-        .func = &cmd_set_proxy,
-        .argtable = &proxy_args,
-    };
-    esp_console_cmd_register(&proxy_cmd);
-
-    /* clear_proxy */
-    esp_console_cmd_t clear_proxy_cmd = {
-        .command = "clear_proxy",
-        .help = "Remove proxy configuration",
-        .func = &cmd_clear_proxy,
-    };
-    esp_console_cmd_register(&clear_proxy_cmd);
 
     /* restart */
     esp_console_cmd_t restart_cmd = {

@@ -66,7 +66,7 @@ idf.py set-target esp32s3
 
 ### 配置
 
-**方式 A：配置文件（推荐）** — 填一次，编译时写入固件：
+所有配置通过 `mimi_secrets.h` 在编译时写入：
 
 ```bash
 cp main/mimi_secrets.h.example main/mimi_secrets.h
@@ -91,26 +91,7 @@ idf.py build
 idf.py -p /dev/ttyACM0 flash monitor
 ```
 
-配置文件的值**优先级最高** — 会覆盖 CLI 设置的值。
-
-> **注意**：修改 `mimi_secrets.h` 后，需要先执行 `touch main/mimi_config.h` 再 `idf.py build`，否则不会重新编译。
-
-**方式 B：串口命令行** — 烧录后在运行时配置：
-
-```bash
-idf.py build
-idf.py -p /dev/ttyACM0 flash monitor
-```
-
-```
-mimi> wifi_set 你的WiFi名 你的WiFi密码
-mimi> set_tg_token 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
-mimi> set_api_key sk-ant-api03-xxxxx
-mimi> set_search_key BSA-xxxxx              # 可选：Brave Search API key，启用网页搜索
-mimi> restart
-```
-
-CLI 设置的值存在 NVS（持久 Flash）中，仅在配置文件未设置对应值时生效。
+> **重要**：修改 `mimi_secrets.h` 后必须完整重编译：`idf.py fullclean && idf.py build`
 
 ### 代理配置（国内用户）
 
@@ -118,34 +99,18 @@ CLI 设置的值存在 NVS（持久 Flash）中，仅在配置文件未设置对
 
 **前提**：局域网内有一个支持 HTTP CONNECT 的代理（Clash Verge、V2Ray 等），并开启了「允许局域网连接」。
 
-推荐直接在 `mimi_secrets.h` 中配置代理（见上方方式 A），也可以用命令行：
-
-```
-mimi> set_proxy 10.0.0.1 7897
-mimi> restart
-```
-
-清除代理恢复直连：
-
-```
-mimi> clear_proxy
-mimi> restart
-```
+在 `mimi_secrets.h` 中设置 `MIMI_SECRET_PROXY_HOST` 和 `MIMI_SECRET_PROXY_PORT`。清除代理只需把这两项改回空字符串 `""`，然后重新编译。
 
 > **提示**：确保 ESP32-S3 和代理机器在同一局域网。Clash Verge 在「设置 → 允许局域网」中开启。
 
-### 所有命令
+### CLI 命令
+
+串口 CLI 提供调试和运维命令：
 
 ```
-mimi> wifi_set <ssid> <pass>   # 设置 WiFi
 mimi> wifi_status              # 连上了吗？
-mimi> set_tg_token <token>     # 设置 Telegram Bot Token
-mimi> set_api_key <key>        # 设置 Anthropic API Key
-mimi> set_model claude-opus-4-6 # 换个模型
-mimi> set_search_key <key>     # 设置 Brave Search API Key（web_search 工具用）
-mimi> set_proxy 10.0.0.1 7897  # 通过 HTTP 代理
-mimi> clear_proxy              # 清除代理，直连
 mimi> memory_read              # 看看它记住了什么
+mimi> memory_write "内容"       # 写入 MEMORY.md
 mimi> heap_info                # 还剩多少内存？
 mimi> session_list             # 列出所有会话
 mimi> session_clear 12345      # 删除一个会话
@@ -173,7 +138,7 @@ MimiClaw 使用 Anthropic 的 tool use 协议 — Claude 在对话中可以调�
 | `web_search` | 通过 Brave Search API 搜索网页，获取实时信息 |
 | `get_current_time` | 通过 HTTP 获取当前日期和时间，并设置系统时钟 |
 
-启用网页搜索需要设置 [Brave Search API key](https://brave.com/search/api/)，在配置文件或 CLI（`set_search_key`）中设置。
+启用网页搜索需要在 `mimi_secrets.h` 中设置 [Brave Search API key](https://brave.com/search/api/)（`MIMI_SECRET_SEARCH_KEY`）。
 
 ## 其他功能
 

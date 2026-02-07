@@ -106,7 +106,7 @@ main/
 │
 ├── wifi/
 │   ├── wifi_manager.h      WiFi STA lifecycle API
-│   └── wifi_manager.c      NVS credentials, event handler, exponential backoff
+│   └── wifi_manager.c      Event handler, exponential backoff
 │
 ├── telegram/
 │   ├── telegram_bot.h      Bot init/start, send_message API
@@ -144,7 +144,7 @@ main/
 │
 ├── cli/
 │   ├── serial_cli.h        CLI init API
-│   └── serial_cli.c        esp_console REPL with 15 commands
+│   └── serial_cli.c        esp_console REPL with debug/maintenance commands
 │
 └── ota/
     ├── ota_manager.h       OTA update API
@@ -190,7 +190,7 @@ Large buffers (32 KB+) are allocated from PSRAM via `heap_caps_calloc(1, size, M
 ```
 Offset      Size      Name        Purpose
 ─────────────────────────────────────────────
-0x009000    24 KB     nvs         WiFi creds, TG token, API key, model
+0x009000    24 KB     nvs         ESP-IDF internal use (WiFi calibration etc.)
 0x00F000     8 KB     otadata     OTA boot state
 0x011000     4 KB     phy_init    WiFi PHY calibration
 0x020000     2 MB     ota_0       Firmware slot A
@@ -223,22 +223,22 @@ Session files are JSONL (one JSON object per line):
 
 ---
 
-## NVS Configuration
+## Configuration
 
-| Namespace       | Key          | Description                             |
-|-----------------|--------------|-----------------------------------------|
-| `wifi_config`   | `ssid`       | WiFi SSID                               |
-| `wifi_config`   | `password`   | WiFi password                           |
-| `tg_config`     | `bot_token`  | Telegram Bot API token                  |
-| `llm_config`    | `api_key`    | Anthropic API key                       |
-| `llm_config`    | `model`      | Model ID (default: claude-opus-4-6)     |
-| `proxy_config`  | `host`       | HTTP proxy hostname/IP                  |
-| `proxy_config`  | `port`       | HTTP proxy port                         |
-| `search_config` | `api_key`    | Brave Search API key                    |
+All configuration is done exclusively through `mimi_secrets.h` at build time. There is no runtime configuration — changing any setting requires `idf.py fullclean && idf.py build`.
 
-**Configuration priority**: `mimi_secrets.h` (build-time) > NVS (CLI-set) > defaults.
+| Define                       | Description                             |
+|------------------------------|-----------------------------------------|
+| `MIMI_SECRET_WIFI_SSID`     | WiFi SSID                               |
+| `MIMI_SECRET_WIFI_PASS`     | WiFi password                           |
+| `MIMI_SECRET_TG_TOKEN`      | Telegram Bot API token                  |
+| `MIMI_SECRET_API_KEY`       | Anthropic API key                       |
+| `MIMI_SECRET_MODEL`         | Model ID (default: claude-opus-4-6)     |
+| `MIMI_SECRET_PROXY_HOST`    | HTTP proxy hostname/IP (optional)       |
+| `MIMI_SECRET_PROXY_PORT`    | HTTP proxy port (optional)              |
+| `MIMI_SECRET_SEARCH_KEY`    | Brave Search API key (optional)         |
 
-All configurable via Serial CLI or build-time config file (`mimi_secrets.h`).
+NVS is still initialized (required by ESP-IDF WiFi internals) but is not used for application configuration.
 
 ---
 
@@ -340,14 +340,14 @@ app_main()
   ├── memory_store_init()           Verify SPIFFS paths
   ├── session_mgr_init()
   ├── wifi_manager_init()           Init WiFi STA mode + event handlers
-  ├── http_proxy_init()             Load proxy config (secrets > NVS)
-  ├── telegram_bot_init()           Load bot token (secrets > NVS)
-  ├── llm_proxy_init()              Load API key + model (secrets > NVS)
+  ├── http_proxy_init()             Load proxy config from build-time secrets
+  ├── telegram_bot_init()           Load bot token from build-time secrets
+  ├── llm_proxy_init()              Load API key + model from build-time secrets
   ├── tool_registry_init()          Register tools, build tools JSON
   ├── agent_loop_init()
   ├── serial_cli_init()             Start REPL (works without WiFi)
   │
-  ├── wifi_manager_start()          Connect (secrets > NVS credentials)
+  ├── wifi_manager_start()          Connect using build-time credentials
   │   └── wifi_manager_wait_connected(30s)
   │
   └── [if WiFi connected]
@@ -357,22 +357,17 @@ app_main()
       └── outbound_dispatch task    Launch outbound task (Core 0)
 ```
 
-If WiFi credentials are missing or connection times out, the CLI remains available for configuration.
+If WiFi credentials are missing or connection times out, the CLI remains available for diagnostics.
 
 ---
 
 ## Serial CLI Commands
 
+The CLI provides debug and maintenance commands only. All configuration is done via `mimi_secrets.h`.
+
 | Command                        | Description                          |
 |--------------------------------|--------------------------------------|
-| `wifi_set <SSID> <PASSWORD>`   | Save WiFi credentials to NVS        |
 | `wifi_status`                  | Show connection status and IP        |
-| `set_tg_token <TOKEN>`         | Save Telegram bot token              |
-| `set_api_key <KEY>`            | Save Anthropic API key               |
-| `set_model <MODEL_ID>`         | Set LLM model identifier             |
-| `set_search_key <KEY>`         | Save Brave Search API key            |
-| `set_proxy <HOST> <PORT>`      | Set HTTP CONNECT proxy               |
-| `clear_proxy`                  | Remove proxy, use direct connection  |
 | `memory_read`                  | Print MEMORY.md contents             |
 | `memory_write <CONTENT>`       | Overwrite MEMORY.md                  |
 | `session_list`                 | List all session files               |
@@ -380,8 +375,6 @@ If WiFi credentials are missing or connection times out, the CLI remains availab
 | `heap_info`                    | Show internal + PSRAM free bytes     |
 | `restart`                      | Reboot the device                    |
 | `help`                         | List all available commands           |
-
-> **Note**: CLI-set values are stored in NVS but are overridden by `mimi_secrets.h` build-time values if set.
 
 ---
 
@@ -396,7 +389,7 @@ If WiFi credentials are missing or connection times out, the CLI remains availab
 | `channels/telegram.py`      | `telegram/telegram_bot.c`      | Raw HTTP, no python-telegram-bot |
 | `bus/events.py` + `queue.py`| `bus/message_bus.c`            | FreeRTOS queues vs asyncio   |
 | `providers/litellm_provider.py` | `llm/llm_proxy.c`         | Direct Anthropic API only    |
-| `config/schema.py`          | `mimi_config.h` + `mimi_secrets.h` + NVS | Build-time secrets > NVS |
+| `config/schema.py`          | `mimi_config.h` + `mimi_secrets.h` | Build-time secrets only  |
 | `cli/commands.py`           | `cli/serial_cli.c`             | esp_console REPL             |
 | `agent/tools/*`             | `tools/tool_registry.c` + `tool_web_search.c` | web_search via Brave API |
 | `agent/subagent.py`         | *(not yet implemented)*        | See TODO.md                  |

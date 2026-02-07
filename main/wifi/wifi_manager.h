@@ -10,7 +10,6 @@
 
 /**
  * Initialize WiFi subsystem (STA mode).
- * Reads SSID/password from NVS. If not set, waits for serial configuration.
  */
 esp_err_t wifi_manager_init(void);
 
@@ -30,11 +29,6 @@ esp_err_t wifi_manager_wait_connected(uint32_t timeout_ms);
  * Check if WiFi is currently connected.
  */
 bool wifi_manager_is_connected(void);
-
-/**
- * Save WiFi credentials to NVS.
- */
-esp_err_t wifi_manager_set_credentials(const char *ssid, const char *password);
 
 /**
  * Get the current IP address string (or "0.0.0.0" if not connected).

@@ -8,7 +8,7 @@
 #include "mimi_config.h"
 
 /**
- * Initialize the LLM proxy. Reads API key and model from NVS.
+ * Initialize the LLM proxy.
  */
 esp_err_t llm_proxy_init(void);
 
@@ -23,16 +23,6 @@ esp_err_t llm_proxy_init(void);
  */
 esp_err_t llm_chat(const char *system_prompt, const char *messages_json,
                    char *response_buf, size_t buf_size);
-
-/**
- * Save the Anthropic API key to NVS.
- */
-esp_err_t llm_set_api_key(const char *api_key);
-
-/**
- * Save the model identifier to NVS.
- */
-esp_err_t llm_set_model(const char *model);
 
 /* ── Tool Use Support ──────────────────────────────────────────── */
 

@@ -23,11 +23,8 @@
 #include "tools/tool_registry.h"
 #include "cron/cron_service.h"
 #include "heartbeat/heartbeat.h"
-#include "display/display.h"
 #include "buttons/button_driver.h"
-#include "ui/config_screen.h"
 #include "imu/imu_manager.h"
-#include "rgb/rgb.h"
 #include "skills/skill_loader.h"
 
 static const char *TAG = "mimi";
@@ -83,12 +80,6 @@ static void outbound_dispatch_task(void *arg)
             } else {
                 ESP_LOGI(TAG, "Telegram send success for %s (%d bytes)", msg.chat_id, (int)strlen(msg.content));
             }
-            if (config_screen_is_active()) {
-                config_screen_toggle();
-            }
-            char title[48];
-            snprintf(title, sizeof(title), "TG OUT %s", msg.chat_id);
-            display_show_message_card(title, msg.content);
         } else if (strcmp(msg.channel, MIMI_CHAN_WEBSOCKET) == 0) {
             esp_err_t ws_err = ws_server_send(msg.chat_id, msg.content);
             if (ws_err != ESP_OK) {
@@ -120,15 +111,10 @@ void app_main(void)
     ESP_LOGI(TAG, "PSRAM free:    %d bytes",
              (int)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
 
-    /* Display + input */
-    ESP_ERROR_CHECK(display_init());
-    display_show_banner();
-    ESP_ERROR_CHECK(rgb_init());
-    rgb_set(255, 0, 0);
+    /* Input */
     button_Init();
-    config_screen_init();
     imu_manager_init();
-    imu_manager_set_shake_callback(config_screen_toggle);
+    imu_manager_set_shake_callback(NULL);
 
     /* Phase 1: Core infrastructure */
     ESP_ERROR_CHECK(init_nvs());

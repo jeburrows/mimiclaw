@@ -2,8 +2,6 @@
 #include "mimi_config.h"
 #include "bus/message_bus.h"
 #include "proxy/http_proxy.h"
-#include "display/display.h"
-#include "ui/config_screen.h"
 
 #include <string.h>
 #include <stdlib.h>
@@ -257,13 +255,6 @@ static void process_updates(const char *json_str)
         }
 
         ESP_LOGI(TAG, "Message from chat %s: %.40s...", chat_id_str, text->valuestring);
-
-        if (config_screen_is_active()) {
-            config_screen_toggle();
-        }
-        char title[48];
-        snprintf(title, sizeof(title), "TG IN %s", chat_id_str);
-        display_show_message_card(title, text->valuestring);
 
         /* Push to inbound bus */
         mimi_msg_t msg = {0};

@@ -16,6 +16,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Create secrets stub
+        run: cp main/mimi_secrets.h.example main/mimi_secrets.h
+
       - name: Build firmware (ESP32-S3)
         shell: bash
         run: |

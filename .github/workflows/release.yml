@@ -15,6 +15,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Create secrets stub
+        run: cp main/mimi_secrets.h.example main/mimi_secrets.h
+
       - name: Build firmware
         shell: bash
         run: |
@@ -31,7 +34,7 @@ jobs:
           # Generate merged firmware for single-command flashing
           esptool.py --chip esp32s3 merge_bin \
             --flash_mode qio \
-            --flash_size 16MB \
+            --flash_size 8MB \
             --flash_freq 80m \
             -o "mimiclaw-full-${VERSION}.bin" \
             0x0     build/bootloader/bootloader.bin \
@@ -45,6 +48,10 @@ jobs:
           cp build/partition_table/partition-table.bin "partition-table-${VERSION}.bin"
           cp build/ota_data_initial.bin      "ota_data_initial-${VERSION}.bin"
 
+          # Plain mimiclaw.bin — required for OTA URL:
+          # https://github.com/jeburrows/mimiclaw/releases/latest/download/mimiclaw.bin
+          cp build/mimiclaw.bin mimiclaw.bin
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -52,7 +59,7 @@ jobs:
           body: |
             ## Flashing Guide
 
-            ### 1. Merged firmware (easiest)
+            ### 1. Merged firmware (easiest, first-time flash)
 
             Download `mimiclaw-full-${{ github.ref_name }}.bin` and flash with a single command:
 
@@ -72,21 +79,28 @@ jobs:
 
             ### 3. OTA update (for devices already running MimiClaw)
 
-            Upload `mimiclaw-${{ github.ref_name }}.bin` via the OTA endpoint.
+            Send this message to your bot on Telegram:
 
-            ### 4. First-time setup
+            ```
+            update firmware
+            ```
+
+            The bot will fetch `mimiclaw.bin` from this release and reboot automatically.
+
+            ### 4. First-time serial setup
 
             After flashing, connect via serial (115200 baud) and configure:
 
             ```
-            wifi <ssid> <password>
-            tg_token <your-telegram-bot-token>
-            api_key <your-anthropic-api-key>
-            reboot
+            mimi> wifi_set <ssid> <password>
+            mimi> set_tg_token <your-telegram-bot-token>
+            mimi> set_api_key <your-anthropic-or-openai-api-key>
+            mimi> restart
             ```
           files: |
             mimiclaw-full-${{ github.ref_name }}.bin
             mimiclaw-${{ github.ref_name }}.bin
+            mimiclaw.bin
             bootloader-${{ github.ref_name }}.bin
             partition-table-${{ github.ref_name }}.bin
             ota_data_initial-${{ github.ref_name }}.bin

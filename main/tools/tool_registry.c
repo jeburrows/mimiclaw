@@ -3,6 +3,7 @@
 #include "tools/tool_get_time.h"
 #include "tools/tool_files.h"
 #include "tools/tool_cron.h"
+#include "tools/tool_ota.h"
 
 #include <string.h>
 #include "esp_log.h"
@@ -174,6 +175,18 @@ esp_err_t tool_registry_init(void)
         .execute = tool_cron_remove_execute,
     };
     register_tool(&cr);
+
+    /* Register ota_update */
+    mimi_tool_t ota = {
+        .name = "ota_update",
+        .description = "Trigger an OTA firmware update. Downloads a .bin file from the given HTTPS URL and flashes it. The device reboots automatically on success.",
+        .input_schema_json =
+            "{\"type\":\"object\","
+            "\"properties\":{\"url\":{\"type\":\"string\",\"description\":\"HTTPS URL to the firmware .bin file\"}},"
+            "\"required\":[\"url\"]}",
+        .execute = tool_ota_execute,
+    };
+    register_tool(&ota);
 
     build_tools_json();
 

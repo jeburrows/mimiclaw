@@ -87,6 +87,27 @@ static const char *TAG = "skills";
     "2. Translate directly using your language knowledge\\n" \
     "3. For specialized terms, use web_search to verify\\n\"\n"
 
+#define BUILTIN_OTA_UPDATE \
+    "# OTA Update\n" \
+    "\n" \
+    "Update the device firmware over the air from a GitHub release.\n" \
+    "\n" \
+    "## When to use\n" \
+    "When the user asks to update the firmware, upgrade the device, or install the latest version.\n" \
+    "Trigger words: update, upgrade, OTA, flash new firmware, latest version.\n" \
+    "\n" \
+    "## How to use\n" \
+    "1. Confirm with the user before proceeding — OTA reboots the device\n" \
+    "2. Use the ota_update tool with the release URL:\n" \
+    "   url: https://github.com/jeburrows/mimiclaw/releases/latest/download/mimiclaw.bin\n" \
+    "3. Warn the user the device will be offline for ~60-120 seconds during the update\n" \
+    "4. The device reboots automatically on success; on failure it keeps running the current firmware\n" \
+    "\n" \
+    "## Example\n" \
+    "User: \"Update the firmware\"\n" \
+    "→ Confirm: \"Starting OTA from the latest jeburrows/mimiclaw release. Device will reboot.\"\n" \
+    "→ ota_update({\"url\": \"https://github.com/jeburrows/mimiclaw/releases/latest/download/mimiclaw.bin\"})\n"
+
 /* Built-in skill registry */
 typedef struct {
     const char *filename;   /* e.g. "weather" */
@@ -97,6 +118,7 @@ static const builtin_skill_t s_builtins[] = {
     { "weather",        BUILTIN_WEATHER        },
     { "daily-briefing", BUILTIN_DAILY_BRIEFING },
     { "skill-creator",  BUILTIN_SKILL_CREATOR  },
+    { "ota-update",     BUILTIN_OTA_UPDATE     },
 };
 
 #define NUM_BUILTINS (sizeof(s_builtins) / sizeof(s_builtins[0]))

@@ -106,36 +106,39 @@ static esp_err_t fetch_time_via_proxy(char *out, size_t out_size)
     return ESP_OK;
 }
 
+/* Event handler that captures the Date response header into user_data buffer */
+static esp_err_t time_http_event_handler(esp_http_client_event_t *evt)
+{
+    if (evt->event_id == HTTP_EVENT_ON_HEADER &&
+        strcasecmp(evt->header_key, "Date") == 0) {
+        strlcpy((char *)evt->user_data, evt->header_value, 64);
+    }
+    return ESP_OK;
+}
+
 /* Fetch time via direct HTTPS */
 static esp_err_t fetch_time_direct(char *out, size_t out_size)
 {
+    char date_copy[64] = {0};
+
     esp_http_client_config_t config = {
         .url = "https://api.telegram.org/",
         .method = HTTP_METHOD_HEAD,
         .timeout_ms = 10000,
         .crt_bundle_attach = esp_crt_bundle_attach,
+        .event_handler = time_http_event_handler,
+        .user_data = date_copy,
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (!client) return ESP_FAIL;
 
     esp_err_t err = esp_http_client_perform(client);
-    if (err != ESP_OK) {
-        esp_http_client_cleanup(client);
-        return err;
-    }
-
-    /* Get Date header */
-    char date_val[64] = {0};
-    err = esp_http_client_get_header(client, "Date", (char **)&date_val);
-    /* esp_http_client_get_header returns pointer, not copy */
-    char *date_ptr = NULL;
-    esp_http_client_get_header(client, "Date", &date_ptr);
     esp_http_client_cleanup(client);
 
-    if (!date_ptr || date_ptr[0] == '\0') return ESP_ERR_NOT_FOUND;
-
-    if (!parse_and_set_time(date_ptr, out, out_size)) return ESP_FAIL;
+    if (err != ESP_OK) return err;
+    if (date_copy[0] == '\0') return ESP_ERR_NOT_FOUND;
+    if (!parse_and_set_time(date_copy, out, out_size)) return ESP_FAIL;
     return ESP_OK;
 }
 

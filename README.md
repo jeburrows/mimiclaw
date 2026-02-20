@@ -15,6 +15,8 @@
   <strong><a href="README.md">English</a> | <a href="README_CN.md">中文</a> | <a href="README_JA.md">日本語</a></strong>
 </p>
 
+> **Note: This is a fork of [memovai/mimiclaw](https://github.com/memovai/mimiclaw) configured specifically for the [Seeed Studio XIAO ESP32S3](https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/) (8 MB flash). It has not been tested on any other ESP32 board. If you are using a different board, use the upstream repo instead.**
+
 **The world's first AI assistant(OpenClaw) on a $5 chip. No Linux. No Node.js. Just pure C**
 
 MimiClaw turns a tiny ESP32-S3 board into a personal AI assistant. Plug it into USB power, connect to WiFi, and talk to it through Telegram — it handles any task you throw at it and evolves over time with local memory — all on a chip the size of a thumb.
@@ -37,7 +39,7 @@ You send a message on Telegram. The ESP32-S3 picks it up over WiFi, feeds it int
 
 ### What You Need
 
-- An **ESP32-S3 dev board** with 16 MB flash and 8 MB PSRAM (e.g. Xiaozhi AI board, ~$10)
+- A **[Seeed Studio XIAO ESP32S3](https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/)** with 8 MB flash and 8 MB PSRAM (~$7)
 - A **USB Type-C cable**
 - A **Telegram bot token** — talk to [@BotFather](https://t.me/BotFather) on Telegram to create one
 - An **Anthropic API key** — from [console.anthropic.com](https://console.anthropic.com), or an **OpenAI API key** — from [platform.openai.com](https://platform.openai.com)
@@ -149,14 +151,7 @@ ls /dev/ttyACM*          # Linux
 idf.py -p PORT flash monitor
 ```
 
-> **Important: Plug into the correct USB port!** Most ESP32-S3 boards have two USB-C ports. You must use the one labeled **USB** (native USB Serial/JTAG), **not** the one labeled **COM** (external UART bridge). Plugging into the wrong port will cause flash/monitor failures.
->
-> <details>
-> <summary>Show reference photo</summary>
->
-> <img src="assets/esp32s3-usb-port.jpg" alt="Plug into the USB port, not COM" width="480" />
->
-> </details>
+> **Note:** The XIAO ESP32S3 has a single USB-C port. Just plug in and flash — no port selection needed.
 
 ### CLI Commands
 

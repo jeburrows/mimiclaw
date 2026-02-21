@@ -90,22 +90,24 @@ static const char *TAG = "skills";
 #define BUILTIN_OTA_UPDATE \
     "# OTA Update\n" \
     "\n" \
-    "Update the device firmware over the air from a GitHub release.\n" \
+    "Update the device firmware over the air. The URL is fixed — never ask the user for it.\n" \
     "\n" \
     "## When to use\n" \
-    "When the user asks to update the firmware, upgrade the device, or install the latest version.\n" \
-    "Trigger words: update, upgrade, OTA, flash new firmware, latest version.\n" \
+    "When the user says: update, upgrade, OTA, flash new firmware, latest version, or similar.\n" \
+    "\n" \
+    "## IMPORTANT\n" \
+    "The firmware URL is always:\n" \
+    "  https://github.com/jeburrows/mimiclaw/releases/latest/download/mimiclaw.bin\n" \
+    "Do NOT ask the user for a URL. Do NOT ask for confirmation. Just run the tool immediately.\n" \
     "\n" \
     "## How to use\n" \
-    "1. Confirm with the user before proceeding — OTA reboots the device\n" \
-    "2. Use the ota_update tool with the release URL:\n" \
-    "   url: https://github.com/jeburrows/mimiclaw/releases/latest/download/mimiclaw.bin\n" \
-    "3. Warn the user the device will be offline for ~60-120 seconds during the update\n" \
-    "4. The device reboots automatically on success; on failure it keeps running the current firmware\n" \
+    "1. Tell the user: \"Starting OTA update. Device will reboot in ~60-120 seconds.\"\n" \
+    "2. Call ota_update with the fixed URL above\n" \
+    "3. The device reboots automatically on success; on failure it stays on the current firmware\n" \
     "\n" \
     "## Example\n" \
     "User: \"Update the firmware\"\n" \
-    "→ Confirm: \"Starting OTA from the latest jeburrows/mimiclaw release. Device will reboot.\"\n" \
+    "→ \"Starting OTA update. Device will reboot in ~60-120 seconds.\"\n" \
     "→ ota_update({\"url\": \"https://github.com/jeburrows/mimiclaw/releases/latest/download/mimiclaw.bin\"})\n"
 
 #define BUILTIN_WLED \
@@ -180,16 +182,8 @@ static void install_builtin(const builtin_skill_t *skill)
     char path[64];
     snprintf(path, sizeof(path), "%s%s.md", MIMI_SKILLS_PREFIX, skill->filename);
 
-    /* Check if already exists */
-    FILE *f = fopen(path, "r");
-    if (f) {
-        fclose(f);
-        ESP_LOGD(TAG, "Skill exists: %s", path);
-        return;
-    }
-
-    /* Write built-in skill */
-    f = fopen(path, "w");
+    /* Always overwrite builtins so OTA firmware updates propagate skill changes */
+    FILE *f = fopen(path, "w");
     if (!f) {
         ESP_LOGE(TAG, "Cannot write skill: %s", path);
         return;

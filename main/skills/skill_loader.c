@@ -108,6 +108,55 @@ static const char *TAG = "skills";
     "→ Confirm: \"Starting OTA from the latest jeburrows/mimiclaw release. Device will reboot.\"\n" \
     "→ ota_update({\"url\": \"https://github.com/jeburrows/mimiclaw/releases/latest/download/mimiclaw.bin\"})\n"
 
+#define BUILTIN_WLED \
+    "# WLED Control\n" \
+    "\n" \
+    "Control a WLED device over HTTP using the http_get tool.\n" \
+    "\n" \
+    "## Setup\n" \
+    "The WLED device IP address must be known. Check /spiffs/memory/MEMORY.md for a stored\n" \
+    "WLED IP. If not found, ask the user for it and save it with write_file.\n" \
+    "\n" \
+    "## API format\n" \
+    "All commands are GET requests to: http://[WLED_IP]/win?[params]\n" \
+    "Multiple params are joined with &. The response is XML confirming the new state.\n" \
+    "\n" \
+    "## Common parameters\n" \
+    "- T=0  turn off | T=1  turn on | T=2  toggle\n" \
+    "- A=0-255  brightness (128 = ~50%, 255 = max)\n" \
+    "- R=0-255  red | G=0-255  green | B=0-255  blue\n" \
+    "- FX=0-101  effect index (0=Solid, 1=Blink, 2=Breathe, 9=Rainbow, 11=Fireworks)\n" \
+    "- SX=0-255  effect speed | IX=0-255  effect intensity\n" \
+    "- FP=0-46   color palette\n" \
+    "- PL=N      load preset N\n" \
+    "- A=~10     relative adjustment: increase brightness by 10 (use ~ prefix)\n" \
+    "\n" \
+    "## Common color shortcuts\n" \
+    "- Red:    R=255&G=0&B=0\n" \
+    "- Green:  R=0&G=255&B=0\n" \
+    "- Blue:   R=0&G=0&B=255\n" \
+    "- White:  R=255&G=255&B=255\n" \
+    "- Warm:   R=255&G=147&B=41\n" \
+    "- Purple: R=128&G=0&B=128\n" \
+    "- Orange: R=255&G=165&B=0\n" \
+    "\n" \
+    "## Examples\n" \
+    "User: \"Turn on the lights\"\n" \
+    "→ http_get({\"url\": \"http://192.168.1.100/win?T=1\"})\n" \
+    "\n" \
+    "User: \"Set lights to blue at half brightness\"\n" \
+    "→ http_get({\"url\": \"http://192.168.1.100/win?T=1&A=128&R=0&G=0&B=255\"})\n" \
+    "\n" \
+    "User: \"Set lights to rainbow effect\"\n" \
+    "→ http_get({\"url\": \"http://192.168.1.100/win?FX=9&SX=128\"})\n" \
+    "\n" \
+    "User: \"Dim the lights by 20\"\n" \
+    "→ http_get({\"url\": \"http://192.168.1.100/win?A=~-20\"})\n" \
+    "\n" \
+    "User: \"What's the current status?\"\n" \
+    "→ http_get({\"url\": \"http://192.168.1.100/win\"})\n" \
+    "→ Parse the XML response: <ac> = brightness, <cl> = color, <fx> = effect\n"
+
 /* Built-in skill registry */
 typedef struct {
     const char *filename;   /* e.g. "weather" */
@@ -119,6 +168,7 @@ static const builtin_skill_t s_builtins[] = {
     { "daily-briefing", BUILTIN_DAILY_BRIEFING },
     { "skill-creator",  BUILTIN_SKILL_CREATOR  },
     { "ota-update",     BUILTIN_OTA_UPDATE     },
+    { "wled",           BUILTIN_WLED           },
 };
 
 #define NUM_BUILTINS (sizeof(s_builtins) / sizeof(s_builtins[0]))

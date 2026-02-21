@@ -4,6 +4,7 @@
 #include "tools/tool_files.h"
 #include "tools/tool_cron.h"
 #include "tools/tool_ota.h"
+#include "tools/tool_http_get.h"
 
 #include <string.h>
 #include "esp_log.h"
@@ -187,6 +188,18 @@ esp_err_t tool_registry_init(void)
         .execute = tool_ota_execute,
     };
     register_tool(&ota);
+
+    /* Register http_get */
+    mimi_tool_t hg = {
+        .name = "http_get",
+        .description = "Make an HTTP GET request to a URL and return the response body. Use this to call local network APIs such as WLED, Home Assistant, or any REST endpoint accessible from this device's network.",
+        .input_schema_json =
+            "{\"type\":\"object\","
+            "\"properties\":{\"url\":{\"type\":\"string\",\"description\":\"Full URL to request (http:// or https://)\"}},"
+            "\"required\":[\"url\"]}",
+        .execute = tool_http_get_execute,
+    };
+    register_tool(&hg);
 
     build_tools_json();
 

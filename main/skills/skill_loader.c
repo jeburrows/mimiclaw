@@ -119,9 +119,11 @@ static const char *TAG = "skills";
     "The WLED device IP address must be known. Check /spiffs/memory/MEMORY.md for a stored\n" \
     "WLED IP. If not found, ask the user for it and save it with write_file.\n" \
     "\n" \
-    "## API format\n" \
-    "All commands are GET requests to: http://[WLED_IP]/win?[params]\n" \
-    "Multiple params are joined with &. The response is XML confirming the new state.\n" \
+    "## CRITICAL: URL format\n" \
+    "WLED uses & (ampersand) — NOT ? — as the first parameter separator.\n" \
+    "CORRECT:   http://[IP]/win&T=1&A=128\n" \
+    "INCORRECT: http://[IP]/win?T=1&A=128\n" \
+    "The status-only URL (no params) is just: http://[IP]/win\n" \
     "\n" \
     "## Common parameters\n" \
     "- T=0  turn off | T=1  turn on | T=2  toggle\n" \
@@ -144,16 +146,16 @@ static const char *TAG = "skills";
     "\n" \
     "## Examples\n" \
     "User: \"Turn on the lights\"\n" \
-    "→ http_get({\"url\": \"http://192.168.1.100/win?T=1\"})\n" \
+    "→ http_get({\"url\": \"http://192.168.1.100/win&T=1\"})\n" \
     "\n" \
     "User: \"Set lights to blue at half brightness\"\n" \
-    "→ http_get({\"url\": \"http://192.168.1.100/win?T=1&A=128&R=0&G=0&B=255\"})\n" \
+    "→ http_get({\"url\": \"http://192.168.1.100/win&T=1&A=128&R=0&G=0&B=255\"})\n" \
     "\n" \
     "User: \"Set lights to rainbow effect\"\n" \
-    "→ http_get({\"url\": \"http://192.168.1.100/win?FX=9&SX=128\"})\n" \
+    "→ http_get({\"url\": \"http://192.168.1.100/win&FX=9&SX=128\"})\n" \
     "\n" \
     "User: \"Dim the lights by 20\"\n" \
-    "→ http_get({\"url\": \"http://192.168.1.100/win?A=~-20\"})\n" \
+    "→ http_get({\"url\": \"http://192.168.1.100/win&A=~-20\"})\n" \
     "\n" \
     "User: \"What's the current status?\"\n" \
     "→ http_get({\"url\": \"http://192.168.1.100/win\"})\n" \

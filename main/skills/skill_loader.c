@@ -342,3 +342,48 @@ size_t skill_loader_build_summary(char *buf, size_t size)
     ESP_LOGI(TAG, "Skills summary: %d bytes", (int)off);
     return off;
 }
+
+/* ── Build full skill content for system prompt ───────────────── */
+
+size_t skill_loader_build_full(char *buf, size_t size)
+{
+    DIR *dir = opendir(MIMI_SPIFFS_BASE);
+    if (!dir) {
+        buf[0] = '\0';
+        return 0;
+    }
+
+    size_t off = 0;
+    struct dirent *ent;
+    const char *skills_subdir = "skills/";
+    const size_t subdir_len = strlen(skills_subdir);
+
+    while ((ent = readdir(dir)) != NULL && off < size - 1) {
+        const char *name = ent->d_name;
+
+        if (strncmp(name, skills_subdir, subdir_len) != 0) continue;
+        size_t name_len = strlen(name);
+        if (name_len < subdir_len + 4) continue;
+        if (strcmp(name + name_len - 3, ".md") != 0) continue;
+
+        char full_path[296];
+        snprintf(full_path, sizeof(full_path), "%s/%s", MIMI_SPIFFS_BASE, name);
+
+        FILE *f = fopen(full_path, "r");
+        if (!f) continue;
+
+        off += snprintf(buf + off, size - off, "---\n");
+        size_t n = fread(buf + off, 1, size - off - 1, f);
+        off += n;
+        buf[off] = '\0';
+        if (off < size - 1 && buf[off - 1] != '\n') {
+            buf[off++] = '\n';
+        }
+        fclose(f);
+    }
+
+    closedir(dir);
+    buf[off] = '\0';
+    ESP_LOGI(TAG, "Skills full content: %d bytes", (int)off);
+    return off;
+}

@@ -89,7 +89,7 @@
 #define MIMI_MEMORY_FILE             "/spiffs/memory/MEMORY.md"
 #define MIMI_SOUL_FILE               "/spiffs/config/SOUL.md"
 #define MIMI_USER_FILE               "/spiffs/config/USER.md"
-#define MIMI_CONTEXT_BUF_SIZE        (16 * 1024)
+#define MIMI_CONTEXT_BUF_SIZE        (32 * 1024)
 #define MIMI_SESSION_MAX_MSGS        20
 
 /* Cron / Heartbeat */

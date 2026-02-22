@@ -47,9 +47,12 @@ esp_err_t context_build_system_prompt(char *buf, size_t size)
         "- list_dir: List files on SPIFFS, optionally filter by prefix.\n"
         "- cron_add: Schedule a recurring or one-shot task. The message will trigger an agent turn when the job fires.\n"
         "- cron_list: List all scheduled cron jobs.\n"
-        "- cron_remove: Remove a scheduled cron job by ID.\n\n"
+        "- cron_remove: Remove a scheduled cron job by ID.\n"
+        "- http_get: Make an HTTP GET request to any URL. Use for local network APIs such as WLED lights.\n"
+        "- ota_update: Flash new firmware over WiFi. Call with no arguments to use the configured release URL.\n"
+        "- get_version: Get the current firmware version and build info.\n\n"
         "When using cron_add for Telegram delivery, always set channel='telegram' and a valid numeric chat_id.\n\n"
-        "Use tools when needed. Provide your final answer as text after using tools.\n\n"
+        "Use tools proactively — do not answer from memory when a tool would give a better result.\n\n"
         "## Memory\n"
         "You have persistent memory stored on local flash:\n"
         "- Long-term memory: /spiffs/memory/MEMORY.md\n"
@@ -62,8 +65,8 @@ esp_err_t context_build_system_prompt(char *buf, size_t size)
         "- Keep MEMORY.md concise and organized — summarize, don't dump raw conversation.\n"
         "- You should proactively save memory without being asked. If the user tells you their name, preferences, or important facts, persist them immediately.\n\n"
         "## Skills\n"
-        "Skills are specialized instruction files stored in /spiffs/skills/.\n"
-        "When a task matches a skill, read the full skill file for detailed instructions.\n"
+        "The following skills contain detailed instructions for specific tasks.\n"
+        "Apply the relevant skill automatically whenever a user request matches — do not wait to be asked.\n"
         "You can create new skills using write_file to /spiffs/skills/<name>.md.\n");
 
     /* Bootstrap files */
@@ -82,14 +85,10 @@ esp_err_t context_build_system_prompt(char *buf, size_t size)
         off += snprintf(buf + off, size - off, "\n## Recent Notes\n\n%s\n", recent_buf);
     }
 
-    /* Skills */
-    char skills_buf[2048];
-    size_t skills_len = skill_loader_build_summary(skills_buf, sizeof(skills_buf));
-    if (skills_len > 0) {
-        off += snprintf(buf + off, size - off,
-            "\n## Available Skills\n\n"
-            "Available skills (use read_file to load full instructions):\n%s\n",
-            skills_buf);
+    /* Skills — full content so agent can apply them without a read_file round-trip */
+    if (off < size - 64) {
+        off += snprintf(buf + off, size - off, "\n## Skills\n\n");
+        off += skill_loader_build_full(buf + off, size - off);
     }
 
     ESP_LOGI(TAG, "System prompt built: %d bytes", (int)off);

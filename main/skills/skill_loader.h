@@ -18,3 +18,14 @@ esp_err_t skill_loader_init(void);
  * @return Number of bytes written (0 if no skills found)
  */
 size_t skill_loader_build_summary(char *buf, size_t size);
+
+/**
+ * Build full content of all skills for the system prompt.
+ * Concatenates the complete text of every skill file so the agent
+ * can apply them without a separate read_file round-trip.
+ *
+ * @param buf   Output buffer
+ * @param size  Buffer size
+ * @return Number of bytes written (0 if no skills found)
+ */
+size_t skill_loader_build_full(char *buf, size_t size);

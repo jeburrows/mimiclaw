@@ -112,7 +112,8 @@ static const char *TAG = "skills";
 #define BUILTIN_WLED \
     "# WLED Control\n" \
     "\n" \
-    "Control a WLED device over HTTP using the http_get tool.\n" \
+    "Control smart LED lights via WLED. Use this skill for any request about lights, LEDs,\n" \
+    "brightness, colors, or lighting effects — turn on/off, change color, set an effect, etc.\n" \
     "\n" \
     "## Setup\n" \
     "The WLED device IP address must be known. Check /spiffs/memory/MEMORY.md for a stored\n" \

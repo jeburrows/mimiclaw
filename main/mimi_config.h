@@ -34,6 +34,9 @@
 #ifndef MIMI_SECRET_SEARCH_KEY
 #define MIMI_SECRET_SEARCH_KEY      ""
 #endif
+#ifndef MIMI_SECRET_OTA_URL
+#define MIMI_SECRET_OTA_URL         ""
+#endif
 
 /* WiFi */
 #define MIMI_WIFI_MAX_RETRY          10

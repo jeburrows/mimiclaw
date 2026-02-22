@@ -90,25 +90,24 @@ static const char *TAG = "skills";
 #define BUILTIN_OTA_UPDATE \
     "# OTA Update\n" \
     "\n" \
-    "Update the device firmware over the air. The URL is fixed — never ask the user for it.\n" \
+    "Update the device firmware over the air.\n" \
     "\n" \
     "## When to use\n" \
     "When the user says: update, upgrade, OTA, flash new firmware, latest version, or similar.\n" \
     "\n" \
     "## IMPORTANT\n" \
-    "The firmware URL is always:\n" \
-    "  https://github.com/jeburrows/mimiclaw/releases/latest/download/mimiclaw.bin\n" \
+    "Call ota_update with NO arguments. The firmware URL is configured in the build.\n" \
     "Do NOT ask the user for a URL. Do NOT ask for confirmation. Just run the tool immediately.\n" \
     "\n" \
     "## How to use\n" \
     "1. Tell the user: \"Starting OTA update. Device will reboot in ~60-120 seconds.\"\n" \
-    "2. Call ota_update with the fixed URL above\n" \
+    "2. Call ota_update({}) with no arguments\n" \
     "3. The device reboots automatically on success; on failure it stays on the current firmware\n" \
     "\n" \
     "## Example\n" \
     "User: \"Update the firmware\"\n" \
     "→ \"Starting OTA update. Device will reboot in ~60-120 seconds.\"\n" \
-    "→ ota_update({\"url\": \"https://github.com/jeburrows/mimiclaw/releases/latest/download/mimiclaw.bin\"})\n"
+    "→ ota_update({})\n"
 
 #define BUILTIN_WLED \
     "# WLED Control\n" \

@@ -23,7 +23,7 @@ jobs:
         run: |
           . $IDF_PATH/export.sh
           idf.py set-target esp32s3
-          idf.py build
+          idf.py -DPROJECT_VER="${GITHUB_REF_NAME}" build
 
       - name: Prepare release artifacts
         shell: bash

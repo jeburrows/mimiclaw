@@ -5,6 +5,7 @@
 #include "tools/tool_cron.h"
 #include "tools/tool_ota.h"
 #include "tools/tool_http_get.h"
+#include "tools/tool_version.h"
 
 #include <string.h>
 #include "esp_log.h"
@@ -200,6 +201,18 @@ esp_err_t tool_registry_init(void)
         .execute = tool_http_get_execute,
     };
     register_tool(&hg);
+
+    /* Register get_version */
+    mimi_tool_t ver = {
+        .name = "get_version",
+        .description = "Get the firmware version, build date, and ESP-IDF version currently running on this device.",
+        .input_schema_json =
+            "{\"type\":\"object\","
+            "\"properties\":{},"
+            "\"required\":[]}",
+        .execute = tool_version_execute,
+    };
+    register_tool(&ver);
 
     build_tools_json();
 

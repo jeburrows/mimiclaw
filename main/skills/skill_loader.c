@@ -125,6 +125,16 @@ static const char *TAG = "skills";
     "INCORRECT: http://[IP]/win?T=1&A=128\n" \
     "The status-only URL (no params) is just: http://[IP]/win\n" \
     "\n" \
+    "## CRITICAL: Always execute — never just show\n" \
+    "Always call http_get to send the command. Never skip execution to display the URL.\n" \
+    "If the user asks to see the command, STILL execute it AND include the URL in your reply.\n" \
+    "\n" \
+    "## CRITICAL: Switching from effect to solid color\n" \
+    "WLED keeps any active effect running even when R/G/B are set.\n" \
+    "Whenever setting a solid color, ALWAYS include FX=0 in the same request.\n" \
+    "CORRECT:   http://[IP]/win&FX=0&R=255&G=0&B=0\n" \
+    "INCORRECT: http://[IP]/win&R=255&G=0&B=0  (effect stays active, color may not show)\n" \
+    "\n" \
     "## Common parameters\n" \
     "- T=0  turn off | T=1  turn on | T=2  toggle\n" \
     "- A=0-255  brightness (128 = ~50%, 255 = max)\n" \
@@ -135,27 +145,31 @@ static const char *TAG = "skills";
     "- PL=N      load preset N\n" \
     "- A=~10     relative adjustment: increase brightness by 10 (use ~ prefix)\n" \
     "\n" \
-    "## Common color shortcuts\n" \
-    "- Red:    R=255&G=0&B=0\n" \
-    "- Green:  R=0&G=255&B=0\n" \
-    "- Blue:   R=0&G=0&B=255\n" \
-    "- White:  R=255&G=255&B=255\n" \
-    "- Warm:   R=255&G=147&B=41\n" \
-    "- Purple: R=128&G=0&B=128\n" \
-    "- Orange: R=255&G=165&B=0\n" \
+    "## Common color shortcuts (always pair with FX=0)\n" \
+    "- Red:    FX=0&R=255&G=0&B=0\n" \
+    "- Green:  FX=0&R=0&G=255&B=0\n" \
+    "- Blue:   FX=0&R=0&G=0&B=255\n" \
+    "- White:  FX=0&R=255&G=255&B=255\n" \
+    "- Warm:   FX=0&R=255&G=147&B=41\n" \
+    "- Purple: FX=0&R=128&G=0&B=128\n" \
+    "- Orange: FX=0&R=255&G=165&B=0\n" \
     "\n" \
     "## Examples\n" \
     "User: \"Turn on the lights\"\n" \
     "→ http_get({\"url\": \"http://192.168.1.100/win&T=1\"})\n" \
     "\n" \
     "User: \"Set lights to blue at half brightness\"\n" \
-    "→ http_get({\"url\": \"http://192.168.1.100/win&T=1&A=128&R=0&G=0&B=255\"})\n" \
+    "→ http_get({\"url\": \"http://192.168.1.100/win&FX=0&A=128&R=0&G=0&B=255\"})\n" \
     "\n" \
     "User: \"Set lights to rainbow effect\"\n" \
     "→ http_get({\"url\": \"http://192.168.1.100/win&FX=9&SX=128\"})\n" \
     "\n" \
     "User: \"Dim the lights by 20\"\n" \
     "→ http_get({\"url\": \"http://192.168.1.100/win&A=~-20\"})\n" \
+    "\n" \
+    "User: \"Show me the command to turn lights red\"\n" \
+    "→ Execute: http_get({\"url\": \"http://192.168.1.100/win&FX=0&R=255&G=0&B=0\"})\n" \
+    "→ Reply: \"Executed: http://192.168.1.100/win&FX=0&R=255&G=0&B=0\"\n" \
     "\n" \
     "User: \"What's the current status?\"\n" \
     "→ http_get({\"url\": \"http://192.168.1.100/win\"})\n" \

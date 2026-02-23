@@ -112,68 +112,46 @@ static const char *TAG = "skills";
 #define BUILTIN_WLED \
     "# WLED Control\n" \
     "\n" \
-    "Control smart LED lights via WLED. Use this skill for any request about lights, LEDs,\n" \
-    "brightness, colors, or lighting effects — turn on/off, change color, set an effect, etc.\n" \
+    "Control smart LED lights using the wled_control tool.\n" \
+    "Use for ANY request about lights, LEDs, brightness, colors, or lighting effects.\n" \
+    "Trigger words: lights, LEDs, lamp, bulb, strip, bright, dim, color, glow, on, off.\n" \
     "\n" \
-    "## Setup\n" \
-    "The WLED device IP address must be known. Check /spiffs/memory/MEMORY.md for a stored\n" \
-    "WLED IP. If not found, ask the user for it and save it with write_file.\n" \
+    "## First-time setup\n" \
+    "If the user has not set a WLED IP yet, ask for it once then save it:\n" \
+    "write_file path=\"/spiffs/config/wled_ip.txt\" content=\"192.168.x.x\"\n" \
+    "After that, wled_control finds the IP automatically — no need to ask again.\n" \
     "\n" \
-    "## CRITICAL: URL format\n" \
-    "WLED uses & (ampersand) — NOT ? — as the first parameter separator.\n" \
-    "CORRECT:   http://[IP]/win&T=1&A=128\n" \
-    "INCORRECT: http://[IP]/win?T=1&A=128\n" \
-    "The status-only URL (no params) is just: http://[IP]/win\n" \
+    "## Actions\n" \
+    "- on / off / toggle — power\n" \
+    "- color — solid color (provide r, g, b 0-255). Always turns on and clears any effect.\n" \
+    "- effect — lighting effect (provide effect_id 0-101)\n" \
+    "  Common effects: 0=Solid, 1=Blink, 2=Breathe, 9=Rainbow, 11=Fireworks, 65=Ripple\n" \
+    "- brightness — set level (provide brightness 0-255; 128=50%, 255=max)\n" \
+    "- preset — load saved preset (provide preset number)\n" \
+    "- status — read current state\n" \
     "\n" \
-    "## CRITICAL: Always execute — never just show\n" \
-    "Always call http_get to send the command. Never skip execution to display the URL.\n" \
-    "If the user asks to see the command, STILL execute it AND include the URL in your reply.\n" \
-    "\n" \
-    "## CRITICAL: Switching from effect to solid color\n" \
-    "WLED keeps any active effect running even when R/G/B are set.\n" \
-    "Whenever setting a solid color, ALWAYS include FX=0 in the same request.\n" \
-    "CORRECT:   http://[IP]/win&FX=0&R=255&G=0&B=0\n" \
-    "INCORRECT: http://[IP]/win&R=255&G=0&B=0  (effect stays active, color may not show)\n" \
-    "\n" \
-    "## Common parameters\n" \
-    "- T=0  turn off | T=1  turn on | T=2  toggle\n" \
-    "- A=0-255  brightness (128 = ~50%, 255 = max)\n" \
-    "- R=0-255  red | G=0-255  green | B=0-255  blue\n" \
-    "- FX=0-101  effect index (0=Solid, 1=Blink, 2=Breathe, 9=Rainbow, 11=Fireworks)\n" \
-    "- SX=0-255  effect speed | IX=0-255  effect intensity\n" \
-    "- FP=0-46   color palette\n" \
-    "- PL=N      load preset N\n" \
-    "- A=~10     relative adjustment: increase brightness by 10 (use ~ prefix)\n" \
-    "\n" \
-    "## Common color shortcuts (always pair with FX=0)\n" \
-    "- Red:    FX=0&R=255&G=0&B=0\n" \
-    "- Green:  FX=0&R=0&G=255&B=0\n" \
-    "- Blue:   FX=0&R=0&G=0&B=255\n" \
-    "- White:  FX=0&R=255&G=255&B=255\n" \
-    "- Warm:   FX=0&R=255&G=147&B=41\n" \
-    "- Purple: FX=0&R=128&G=0&B=128\n" \
-    "- Orange: FX=0&R=255&G=165&B=0\n" \
+    "## Common colors (r/g/b values)\n" \
+    "Red=255/0/0  Green=0/255/0  Blue=0/0/255  White=255/255/255\n" \
+    "Warm=255/147/41  Purple=128/0/128  Orange=255/165/0  Pink=255/20/147\n" \
     "\n" \
     "## Examples\n" \
     "User: \"Turn on the lights\"\n" \
-    "→ http_get({\"url\": \"http://192.168.1.100/win&T=1\"})\n" \
+    "→ wled_control({\"action\": \"on\"})\n" \
     "\n" \
-    "User: \"Set lights to blue at half brightness\"\n" \
-    "→ http_get({\"url\": \"http://192.168.1.100/win&FX=0&A=128&R=0&G=0&B=255\"})\n" \
+    "User: \"Set lights to green\"\n" \
+    "→ wled_control({\"action\": \"color\", \"r\": 0, \"g\": 255, \"b\": 0})\n" \
     "\n" \
-    "User: \"Set lights to rainbow effect\"\n" \
-    "→ http_get({\"url\": \"http://192.168.1.100/win&FX=9&SX=128\"})\n" \
+    "User: \"Blue at half brightness\"\n" \
+    "→ wled_control({\"action\": \"color\", \"r\": 0, \"g\": 0, \"b\": 255, \"brightness\": 128})\n" \
     "\n" \
-    "User: \"Dim the lights by 20\"\n" \
-    "→ http_get({\"url\": \"http://192.168.1.100/win&A=~-20\"})\n" \
+    "User: \"Rainbow effect\"\n" \
+    "→ wled_control({\"action\": \"effect\", \"effect_id\": 9})\n" \
     "\n" \
-    "User: \"Show me the command to turn lights red\"\n" \
-    "→ Execute: http_get({\"url\": \"http://192.168.1.100/win&FX=0&R=255&G=0&B=0\"})\n" \
-    "→ Reply: \"Executed: http://192.168.1.100/win&FX=0&R=255&G=0&B=0\"\n" \
+    "User: \"Dim to 30%\"\n" \
+    "→ wled_control({\"action\": \"brightness\", \"brightness\": 77})\n" \
     "\n" \
-    "User: \"What's the current status?\"\n" \
-    "→ http_get({\"url\": \"http://192.168.1.100/win\"})\n" \
-    "→ Parse the XML response: <ac> = brightness, <cl> = color, <fx> = effect\n"
+    "User: \"Turn off\"\n" \
+    "→ wled_control({\"action\": \"off\"})\n"
 
 /* Built-in skill registry */
 typedef struct {

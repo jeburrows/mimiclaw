@@ -6,6 +6,7 @@
 #include "tools/tool_ota.h"
 #include "tools/tool_http_get.h"
 #include "tools/tool_version.h"
+#include "tools/tool_wled.h"
 
 #include <string.h>
 #include "esp_log.h"
@@ -13,7 +14,7 @@
 
 static const char *TAG = "tools";
 
-#define MAX_TOOLS 12
+#define MAX_TOOLS 14
 
 static mimi_tool_t s_tools[MAX_TOOLS];
 static int s_tool_count = 0;
@@ -181,11 +182,10 @@ esp_err_t tool_registry_init(void)
     /* Register ota_update */
     mimi_tool_t ota = {
         .name = "ota_update",
-        .description = "Trigger an OTA firmware update. Downloads a .bin file from the given HTTPS URL and flashes it. The device reboots automatically on success.",
+        .description = "Trigger an OTA firmware update. Call with no arguments to use the default release URL. Optionally pass a custom url. The device reboots automatically on success.",
         .input_schema_json =
             "{\"type\":\"object\","
-            "\"properties\":{\"url\":{\"type\":\"string\",\"description\":\"HTTPS URL to the firmware .bin file\"}},"
-            "\"required\":[\"url\"]}",
+            "\"properties\":{\"url\":{\"type\":\"string\",\"description\":\"Optional custom firmware URL. Omit to use the default release.\"}}}",
         .execute = tool_ota_execute,
     };
     register_tool(&ota);
@@ -213,6 +213,34 @@ esp_err_t tool_registry_init(void)
         .execute = tool_version_execute,
     };
     register_tool(&ver);
+
+    /* Register wled_control */
+    mimi_tool_t wled = {
+        .name = "wled_control",
+        .description = "Control WLED smart LED lights. Use for any request about lights, LEDs, "
+                       "colors, brightness, or lighting effects. Handles on/off/color/effect/brightness/preset. "
+                       "Requires WLED IP saved to /spiffs/config/wled_ip.txt.",
+        .input_schema_json =
+            "{\"type\":\"object\","
+            "\"properties\":{"
+            "\"action\":{\"type\":\"string\","
+              "\"description\":\"What to do: on, off, toggle, color, effect, brightness, preset, status\"},"
+            "\"r\":{\"type\":\"integer\",\"description\":\"Red 0-255 (for action=color)\"},"
+            "\"g\":{\"type\":\"integer\",\"description\":\"Green 0-255 (for action=color)\"},"
+            "\"b\":{\"type\":\"integer\",\"description\":\"Blue 0-255 (for action=color)\"},"
+            "\"brightness\":{\"type\":\"integer\",\"description\":\"Brightness 0-255\"},"
+            "\"effect_id\":{\"type\":\"integer\","
+              "\"description\":\"WLED effect index 0-101 (for action=effect). Common: 0=Solid, 1=Blink, 2=Breathe, 9=Rainbow, 11=Fireworks\"},"
+            "\"speed\":{\"type\":\"integer\",\"description\":\"Effect speed 0-255\"},"
+            "\"intensity\":{\"type\":\"integer\",\"description\":\"Effect intensity 0-255\"},"
+            "\"preset\":{\"type\":\"integer\",\"description\":\"WLED preset number to load\"},"
+            "\"wled_ip\":{\"type\":\"string\","
+              "\"description\":\"WLED IP address (only needed if not saved in /spiffs/config/wled_ip.txt)\"}"
+            "},"
+            "\"required\":[\"action\"]}",
+        .execute = tool_wled_execute,
+    };
+    register_tool(&wled);
 
     build_tools_json();
 

@@ -56,7 +56,7 @@
 #define MIMI_AGENT_STACK             (24 * 1024)
 #define MIMI_AGENT_PRIO              6
 #define MIMI_AGENT_CORE              1
-#define MIMI_AGENT_MAX_HISTORY       20
+#define MIMI_AGENT_MAX_HISTORY       40
 #define MIMI_AGENT_MAX_TOOL_ITER     10
 #define MIMI_MAX_TOOL_CALLS          4
 #define MIMI_AGENT_SEND_WORKING_STATUS 1
@@ -90,7 +90,7 @@
 #define MIMI_SOUL_FILE               "/spiffs/config/SOUL.md"
 #define MIMI_USER_FILE               "/spiffs/config/USER.md"
 #define MIMI_CONTEXT_BUF_SIZE        (32 * 1024)
-#define MIMI_SESSION_MAX_MSGS        20
+#define MIMI_SESSION_MAX_MSGS        40
 
 /* Cron / Heartbeat */
 #define MIMI_CRON_FILE               "/spiffs/cron.json"

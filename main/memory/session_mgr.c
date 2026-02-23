@@ -67,7 +67,7 @@ esp_err_t session_get_history_json(const char *chat_id, char *buf, size_t size, 
     int count = 0;
     int write_idx = 0;
 
-    char line[2048];
+    char line[4096];
     while (fgets(line, sizeof(line), f)) {
         /* Strip newline */
         size_t len = strlen(line);
@@ -95,11 +95,25 @@ esp_err_t session_get_history_json(const char *chat_id, char *buf, size_t size, 
         cJSON *src = messages[idx];
 
         cJSON *entry = cJSON_CreateObject();
-        cJSON *role = cJSON_GetObjectItem(src, "role");
+        cJSON *role    = cJSON_GetObjectItem(src, "role");
         cJSON *content = cJSON_GetObjectItem(src, "content");
-        if (role && content) {
+        if (role && cJSON_IsString(role) && content) {
             cJSON_AddStringToObject(entry, "role", role->valuestring);
-            cJSON_AddStringToObject(entry, "content", content->valuestring);
+            if (cJSON_IsString(content)) {
+                /* Try to parse as a JSON array (tool_use / tool_result records
+                 * are stored as serialised JSON strings). Fall back to plain
+                 * string if parsing fails or the result is not an array. */
+                cJSON *parsed = cJSON_Parse(content->valuestring);
+                if (parsed && cJSON_IsArray(parsed)) {
+                    cJSON_AddItemToObject(entry, "content", parsed);
+                } else {
+                    cJSON_Delete(parsed);
+                    cJSON_AddStringToObject(entry, "content", content->valuestring);
+                }
+            } else {
+                /* Already a structured value (shouldn't happen often, but handle gracefully) */
+                cJSON_AddItemToObject(entry, "content", cJSON_Duplicate(content, 1));
+            }
         }
         cJSON_AddItemToArray(arr, entry);
     }

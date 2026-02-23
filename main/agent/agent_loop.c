@@ -53,6 +53,34 @@ static cJSON *build_assistant_content(const llm_response_t *resp)
     return content;
 }
 
+/* Build a compact JSON string of tool_result blocks for session storage.
+ * Truncates each content string to 512 chars so session lines stay small.
+ * Returns a heap-allocated string the caller must free(). */
+static char *build_compact_results_json(cJSON *tool_results)
+{
+    if (!tool_results) return NULL;
+    cJSON *compact = cJSON_CreateArray();
+    cJSON *item;
+    cJSON_ArrayForEach(item, tool_results) {
+        cJSON *type     = cJSON_GetObjectItem(item, "type");
+        cJSON *tool_id  = cJSON_GetObjectItem(item, "tool_use_id");
+        cJSON *content  = cJSON_GetObjectItem(item, "content");
+        cJSON *block    = cJSON_CreateObject();
+        if (type    && cJSON_IsString(type))    cJSON_AddStringToObject(block, "type",        type->valuestring);
+        if (tool_id && cJSON_IsString(tool_id)) cJSON_AddStringToObject(block, "tool_use_id", tool_id->valuestring);
+        if (content && cJSON_IsString(content)) {
+            /* Truncate large results — session needs the summary, not the full blob */
+            char truncated[513];
+            strlcpy(truncated, content->valuestring, sizeof(truncated));
+            cJSON_AddStringToObject(block, "content", truncated);
+        }
+        cJSON_AddItemToArray(compact, block);
+    }
+    char *result = cJSON_PrintUnformatted(compact);
+    cJSON_Delete(compact);
+    return result;
+}
+
 static void json_set_string(cJSON *obj, const char *key, const char *value)
 {
     if (!obj || !key || !value) {
@@ -214,7 +242,14 @@ static void agent_loop_task(void *arg)
         char *final_text = NULL;
         int iteration = 0;
         bool sent_working_status = false;
-        char tools_used[256] = {0};  /* accumulates tool names called this turn */
+
+        /* Collect tool call pairs (assistant tool_use + user tool_result) so we
+         * can save them to session history after the turn completes.  Storing
+         * real tool_use/tool_result API messages is the only reliable way to
+         * let the model see evidence of prior tool calls in future turns. */
+        struct { char *asst_json; char *result_json; } tc_pairs[MIMI_AGENT_MAX_TOOL_ITER];
+        int tc_count = 0;
+        memset(tc_pairs, 0, sizeof(tc_pairs));
 
         while (iteration < MIMI_AGENT_MAX_TOOL_ITER) {
             /* Send "working" indicator before each API call */
@@ -254,29 +289,35 @@ static void agent_loop_task(void *arg)
 
             ESP_LOGI(TAG, "Tool use iteration %d: %d calls", iteration + 1, resp.call_count);
 
-            /* Track tool names for session annotation */
-            for (int i = 0; i < resp.call_count; i++) {
-                size_t used_len = strlen(tools_used);
-                if (used_len > 0 && used_len < sizeof(tools_used) - 2) {
-                    tools_used[used_len++] = ',';
-                    tools_used[used_len]   = '\0';
-                }
-                strncat(tools_used, resp.calls[i].name,
-                        sizeof(tools_used) - strlen(tools_used) - 1);
-            }
+            /* Build assistant tool_use content and serialise for session
+             * BEFORE transferring ownership to the messages array. */
+            cJSON *asst_content = build_assistant_content(&resp);
+            char  *asst_for_session = cJSON_PrintUnformatted(asst_content);
 
-            /* Append assistant message with content array */
             cJSON *asst_msg = cJSON_CreateObject();
             cJSON_AddStringToObject(asst_msg, "role", "assistant");
-            cJSON_AddItemToObject(asst_msg, "content", build_assistant_content(&resp));
+            cJSON_AddItemToObject(asst_msg, "content", asst_content); /* ownership transferred */
             cJSON_AddItemToArray(messages, asst_msg);
 
-            /* Execute tools and append results */
+            /* Execute tools and serialise results for session
+             * BEFORE transferring ownership to the messages array. */
             cJSON *tool_results = build_tool_results(&resp, &msg, tool_output, TOOL_OUTPUT_SIZE);
+            char  *results_for_session = build_compact_results_json(tool_results);
+
             cJSON *result_msg = cJSON_CreateObject();
             cJSON_AddStringToObject(result_msg, "role", "user");
-            cJSON_AddItemToObject(result_msg, "content", tool_results);
+            cJSON_AddItemToObject(result_msg, "content", tool_results); /* ownership transferred */
             cJSON_AddItemToArray(messages, result_msg);
+
+            /* Store serialised pair for atomic session save after turn ends */
+            if (tc_count < MIMI_AGENT_MAX_TOOL_ITER) {
+                tc_pairs[tc_count].asst_json   = asst_for_session;
+                tc_pairs[tc_count].result_json = results_for_session;
+                tc_count++;
+            } else {
+                free(asst_for_session);
+                free(results_for_session);
+            }
 
             llm_response_free(&resp);
             iteration++;
@@ -286,33 +327,27 @@ static void agent_loop_task(void *arg)
 
         /* 5. Send response */
         if (final_text && final_text[0]) {
-            /* Save to session.
-             * Prefix the assistant message with the tools that were called this
-             * turn so future turns can see the tool-use pattern in history.
-             * Without this annotation the model only sees text and may stop
-             * calling tools after a few turns (pattern-matching from history). */
-            esp_err_t save_user = session_append(msg.chat_id, "user", msg.content);
-            esp_err_t save_asst;
-            if (tools_used[0]) {
-                size_t ann_size = strlen(tools_used) + strlen(final_text) + 16;
-                char *annotated = malloc(ann_size);
-                if (annotated) {
-                    snprintf(annotated, ann_size, "[tools:%s]\n%s", tools_used, final_text);
-                    save_asst = session_append(msg.chat_id, "assistant", annotated);
-                    free(annotated);
-                } else {
-                    save_asst = session_append(msg.chat_id, "assistant", final_text);
-                }
-            } else {
-                save_asst = session_append(msg.chat_id, "assistant", final_text);
+            /* Save the complete turn to session atomically:
+             *   user message → [tool_use + tool_result pairs] → final assistant text
+             *
+             * tool_use and tool_result records are stored as serialised JSON
+             * array strings.  session_get_history_json detects these and
+             * reconstructs them as proper content arrays, giving the model
+             * real structured evidence of prior tool calls in future turns.
+             * This prevents the model from pattern-matching text responses
+             * as a substitute for actually calling tools. */
+            session_append(msg.chat_id, "user", msg.content);
+            for (int i = 0; i < tc_count; i++) {
+                if (tc_pairs[i].asst_json)
+                    session_append(msg.chat_id, "assistant", tc_pairs[i].asst_json);
+                if (tc_pairs[i].result_json)
+                    session_append(msg.chat_id, "user", tc_pairs[i].result_json);
             }
-            if (save_user != ESP_OK || save_asst != ESP_OK) {
-                ESP_LOGW(TAG, "Session save failed for chat %s (user=%s, assistant=%s)",
-                         msg.chat_id,
-                         esp_err_to_name(save_user),
-                         esp_err_to_name(save_asst));
+            esp_err_t save_asst = session_append(msg.chat_id, "assistant", final_text);
+            if (save_asst != ESP_OK) {
+                ESP_LOGW(TAG, "Session save failed for chat %s", msg.chat_id);
             } else {
-                ESP_LOGI(TAG, "Session saved for chat %s", msg.chat_id);
+                ESP_LOGI(TAG, "Session saved for chat %s (%d tool pairs)", msg.chat_id, tc_count);
             }
 
             /* Push response to outbound */
@@ -341,6 +376,12 @@ static void agent_loop_task(void *arg)
                     free(out.content);
                 }
             }
+        }
+
+        /* Free tool call pair strings (heap-allocated during react loop) */
+        for (int i = 0; i < tc_count; i++) {
+            free(tc_pairs[i].asst_json);
+            free(tc_pairs[i].result_json);
         }
 
         /* Free inbound message content */

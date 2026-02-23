@@ -122,6 +122,11 @@ static const char *TAG = "skills";
     "Use for ANY request about lights, LEDs, brightness, colors, or lighting effects.\n" \
     "Trigger words: lights, LEDs, lamp, bulb, strip, bright, dim, color, glow, on, off.\n" \
     "\n" \
+    "## CRITICAL: Always call wled_control — never just describe the action\n" \
+    "History only saves text, not tool calls. Even if a prior message says\n" \
+    "\"I changed the lights to blue\", that does not mean wled_control was called.\n" \
+    "You MUST call wled_control for EVERY light request. No exceptions.\n" \
+    "\n" \
     "## First-time setup\n" \
     "If the user has not set a WLED IP yet, ask for it once then save it:\n" \
     "write_file path=\"/spiffs/config/wled_ip.txt\" content=\"192.168.x.x\"\n" \

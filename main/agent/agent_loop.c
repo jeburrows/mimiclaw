@@ -214,6 +214,7 @@ static void agent_loop_task(void *arg)
         char *final_text = NULL;
         int iteration = 0;
         bool sent_working_status = false;
+        char tools_used[256] = {0};  /* accumulates tool names called this turn */
 
         while (iteration < MIMI_AGENT_MAX_TOOL_ITER) {
             /* Send "working" indicator before each API call */
@@ -253,6 +254,17 @@ static void agent_loop_task(void *arg)
 
             ESP_LOGI(TAG, "Tool use iteration %d: %d calls", iteration + 1, resp.call_count);
 
+            /* Track tool names for session annotation */
+            for (int i = 0; i < resp.call_count; i++) {
+                size_t used_len = strlen(tools_used);
+                if (used_len > 0 && used_len < sizeof(tools_used) - 2) {
+                    tools_used[used_len++] = ',';
+                    tools_used[used_len]   = '\0';
+                }
+                strncat(tools_used, resp.calls[i].name,
+                        sizeof(tools_used) - strlen(tools_used) - 1);
+            }
+
             /* Append assistant message with content array */
             cJSON *asst_msg = cJSON_CreateObject();
             cJSON_AddStringToObject(asst_msg, "role", "assistant");
@@ -274,9 +286,26 @@ static void agent_loop_task(void *arg)
 
         /* 5. Send response */
         if (final_text && final_text[0]) {
-            /* Save to session (only user text + final assistant text) */
+            /* Save to session.
+             * Prefix the assistant message with the tools that were called this
+             * turn so future turns can see the tool-use pattern in history.
+             * Without this annotation the model only sees text and may stop
+             * calling tools after a few turns (pattern-matching from history). */
             esp_err_t save_user = session_append(msg.chat_id, "user", msg.content);
-            esp_err_t save_asst = session_append(msg.chat_id, "assistant", final_text);
+            esp_err_t save_asst;
+            if (tools_used[0]) {
+                size_t ann_size = strlen(tools_used) + strlen(final_text) + 16;
+                char *annotated = malloc(ann_size);
+                if (annotated) {
+                    snprintf(annotated, ann_size, "[tools:%s]\n%s", tools_used, final_text);
+                    save_asst = session_append(msg.chat_id, "assistant", annotated);
+                    free(annotated);
+                } else {
+                    save_asst = session_append(msg.chat_id, "assistant", final_text);
+                }
+            } else {
+                save_asst = session_append(msg.chat_id, "assistant", final_text);
+            }
             if (save_user != ESP_OK || save_asst != ESP_OK) {
                 ESP_LOGW(TAG, "Session save failed for chat %s (user=%s, assistant=%s)",
                          msg.chat_id,

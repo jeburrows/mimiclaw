@@ -26,10 +26,19 @@ esp_err_t tool_ota_execute(const char *input_json, char *output, size_t output_s
         return ESP_ERR_INVALID_STATE;
     }
 
-    snprintf(output, output_size,
-             "OTA update started from: %s — device will reboot on success.", url);
     ESP_LOGI(TAG, "Triggering OTA from: %s", url);
 
-    ota_update_from_url(url);   /* reboots on success; returns on failure */
-    return ESP_OK;
+    esp_err_t ret = ota_update_from_url(url);
+
+    if (ret == ESP_OK) {
+        snprintf(output, output_size,
+                 "OTA successful from %s — device will reboot in ~5 seconds. "
+                 "I will be back online shortly on the new firmware.", url);
+    } else {
+        snprintf(output, output_size,
+                 "OTA FAILED from %s (%s). Device is still running the current firmware.",
+                 url, esp_err_to_name(ret));
+    }
+
+    return ret;
 }

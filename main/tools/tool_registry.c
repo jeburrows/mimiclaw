@@ -205,7 +205,8 @@ esp_err_t tool_registry_init(void)
     /* Register get_version */
     mimi_tool_t ver = {
         .name = "get_version",
-        .description = "Get the firmware version, build date, and ESP-IDF version currently running on this device.",
+        .description = "Get the firmware version, build date, and ESP-IDF version currently running on this device. "
+                       "Always call this tool for version questions — never rely on conversation history.",
         .input_schema_json =
             "{\"type\":\"object\","
             "\"properties\":{},"

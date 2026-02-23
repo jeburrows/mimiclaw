@@ -100,14 +100,20 @@ static const char *TAG = "skills";
     "Do NOT ask the user for a URL. Do NOT ask for confirmation. Just run the tool immediately.\n" \
     "\n" \
     "## How to use\n" \
-    "1. Tell the user: \"Starting OTA update. Device will reboot in ~60-120 seconds.\"\n" \
+    "1. Tell the user: \"Starting OTA download — this takes 60-120 seconds. I'll confirm when done.\"\n" \
     "2. Call ota_update({}) with no arguments\n" \
-    "3. The device reboots automatically on success; on failure it stays on the current firmware\n" \
+    "3. The tool returns the actual result: success (rebooting in ~5 sec) or failure (stays on current firmware)\n" \
+    "4. Relay the result to the user. On success: \"OTA complete! Rebooting now — I'll be back in ~30 seconds.\"\n" \
+    "\n" \
+    "## After OTA\n" \
+    "When the user asks what version is running after an OTA, always call get_version — never guess from history.\n" \
     "\n" \
     "## Example\n" \
     "User: \"Update the firmware\"\n" \
-    "→ \"Starting OTA update. Device will reboot in ~60-120 seconds.\"\n" \
-    "→ ota_update({})\n"
+    "→ \"Starting OTA download — this takes 60-120 seconds. I'll confirm when done.\"\n" \
+    "→ ota_update({})\n" \
+    "→ [tool returns: \"OTA successful... device will reboot in ~5 seconds\"]\n" \
+    "→ \"OTA complete! Rebooting now — I'll be back online in ~30 seconds.\"\n"
 
 #define BUILTIN_WLED \
     "# WLED Control\n" \

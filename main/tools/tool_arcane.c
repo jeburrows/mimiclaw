@@ -84,7 +84,7 @@ static int arcane_request(const char *url, esp_http_client_method_t method,
     return status;
 }
 
-/* ── URL builder: always includes /api prefix ─────────────────── */
+/* ── URL builder ─────────────────────────────────────────────── */
 
 static void build_url(char *buf, size_t size,
                       const char *base_url, const char *env_id,
@@ -93,40 +93,72 @@ static void build_url(char *buf, size_t size,
     snprintf(buf, size, "%s/api/environments/%s%s", base_url, env_id, path);
 }
 
-/* ── Response unwrapper ───────────────────────────────────────── */
+/* ── Response helpers ────────────────────────────────────────── */
 
 /*
- * All Arcane responses are: { "success": bool, "data": <value> }
- * Parse the wrapper and return the detached "data" value (caller must
- * cJSON_Delete it).  On error, writes a message to errbuf and returns NULL.
+ * All Arcane list responses: { success, data: [...], counts: {…}, pagination: {…} }
+ * Parse root, extract data array + optional total item count from pagination.
+ * Returns detached data array (caller must cJSON_Delete), or NULL on error.
+ * If total_out is non-NULL, fills it with grandTotalItems (or 0 if absent).
  */
-static cJSON *unwrap_data(const char *resp, char *errbuf, size_t errbuf_size)
+static cJSON *parse_list_response(const char *resp, int *total_out,
+                                   char *errbuf, size_t errbuf_size)
 {
+    if (total_out) *total_out = 0;
+
     cJSON *root = cJSON_Parse(resp);
     if (!root) {
-        snprintf(errbuf, errbuf_size,
-                 "Error: JSON parse failed — %.120s", resp);
+        snprintf(errbuf, errbuf_size, "Error: JSON parse failed — %.120s", resp);
         return NULL;
     }
 
     cJSON *success = cJSON_GetObjectItem(root, "success");
     if (success && cJSON_IsFalse(success)) {
-        snprintf(errbuf, errbuf_size,
-                 "Error: API returned success=false — %.200s", resp);
+        snprintf(errbuf, errbuf_size, "Error: API returned success=false — %.200s", resp);
         cJSON_Delete(root);
         return NULL;
+    }
+
+    if (total_out) {
+        cJSON *pg = cJSON_GetObjectItem(root, "pagination");
+        if (pg) {
+            cJSON *gti = cJSON_GetObjectItem(pg, "grandTotalItems");
+            if (gti && cJSON_IsNumber(gti)) *total_out = (int)gti->valuedouble;
+        }
     }
 
     cJSON *data = cJSON_DetachItemFromObject(root, "data");
     cJSON_Delete(root);
 
     if (!data) {
-        snprintf(errbuf, errbuf_size,
-                 "Error: no 'data' field in response — %.120s", resp);
+        snprintf(errbuf, errbuf_size, "Error: no 'data' field in response — %.120s", resp);
         return NULL;
     }
+    if (!cJSON_IsArray(data)) {
+        snprintf(errbuf, errbuf_size, "Error: 'data' is not an array");
+        cJSON_Delete(data);
+        return NULL;
+    }
+    return data;
+}
 
-    return data;   /* caller must cJSON_Delete */
+/*
+ * Counts-only response: { success, data: { runningContainers, … } }
+ * Returns detached data object (caller must cJSON_Delete), or NULL on error.
+ */
+static cJSON *parse_counts_response(const char *resp, char *errbuf, size_t errbuf_size)
+{
+    cJSON *root = cJSON_Parse(resp);
+    if (!root) {
+        snprintf(errbuf, errbuf_size, "Error: JSON parse failed — %.120s", resp);
+        return NULL;
+    }
+    cJSON *data = cJSON_DetachItemFromObject(root, "data");
+    cJSON_Delete(root);
+    if (!data) {
+        snprintf(errbuf, errbuf_size, "Error: no 'data' in response — %.120s", resp);
+    }
+    return data;
 }
 
 /* ── Helper: extract id string from a cJSON object ───────────── */
@@ -148,21 +180,40 @@ static bool get_id_string(cJSON *obj, char *id_buf, size_t id_size)
 
 /* ── Actions ─────────────────────────────────────────────────── */
 
+static void action_counts(const char *base_url, const char *env_id, const char *api_key,
+                          char *output, size_t output_size)
+{
+    char url[256];
+    char resp[512];
+
+    build_url(url, sizeof(url), base_url, env_id, "/containers/counts");
+    int st = arcane_request(url, HTTP_METHOD_GET, api_key, resp, sizeof(resp));
+    if (st < 200 || st >= 300) { strlcpy(output, resp, output_size); return; }
+
+    cJSON *data = parse_counts_response(resp, output, output_size);
+    if (!data) return;
+
+    cJSON *r = cJSON_GetObjectItem(data, "runningContainers");
+    cJSON *s = cJSON_GetObjectItem(data, "stoppedContainers");
+    cJSON *t = cJSON_GetObjectItem(data, "totalContainers");
+    snprintf(output, output_size, "Running: %d, Stopped: %d, Total: %d",
+             (r && cJSON_IsNumber(r)) ? (int)r->valuedouble : -1,
+             (s && cJSON_IsNumber(s)) ? (int)s->valuedouble : -1,
+             (t && cJSON_IsNumber(t)) ? (int)t->valuedouble : -1);
+    cJSON_Delete(data);
+}
+
 static void action_status(const char *base_url, const char *env_id, const char *api_key,
                           char *output, size_t output_size)
 {
     char url[256];
     char resp[512];
 
-    /* Container counts — response: { success, data: { runningContainers, … } } */
     build_url(url, sizeof(url), base_url, env_id, "/containers/counts");
     int st = arcane_request(url, HTTP_METHOD_GET, api_key, resp, sizeof(resp));
-    if (st < 200 || st >= 300) {
-        strlcpy(output, resp, output_size);
-        return;
-    }
+    if (st < 200 || st >= 300) { strlcpy(output, resp, output_size); return; }
 
-    cJSON *data = unwrap_data(resp, output, output_size);
+    cJSON *data = parse_counts_response(resp, output, output_size);
     if (!data) return;
 
     int running_c = 0, stopped_c = 0, total_c = 0;
@@ -174,13 +225,12 @@ static void action_status(const char *base_url, const char *env_id, const char *
     if (t && cJSON_IsNumber(t)) total_c   = (int)t->valuedouble;
     cJSON_Delete(data);
 
-    /* Project counts — response: { success, data: { … } } */
     build_url(url, sizeof(url), base_url, env_id, "/projects/counts");
     st = arcane_request(url, HTTP_METHOD_GET, api_key, resp, sizeof(resp));
 
     int running_p = 0, total_p = 0;
     if (st >= 200 && st < 300) {
-        cJSON *pd = unwrap_data(resp, output, output_size);
+        cJSON *pd = parse_counts_response(resp, output, output_size);
         if (pd) {
             cJSON *pr = cJSON_GetObjectItem(pd, "runningProjects");
             if (!pr) pr = cJSON_GetObjectItem(pd, "running");
@@ -198,64 +248,28 @@ static void action_status(const char *base_url, const char *env_id, const char *
              running_c, stopped_c, total_c, running_p, total_p);
 }
 
-static void action_counts(const char *base_url, const char *env_id, const char *api_key,
-                         char *output, size_t output_size)
-{
-    char url[256];
-    char resp[512];
-
-    build_url(url, sizeof(url), base_url, env_id, "/containers/counts");
-    int st = arcane_request(url, HTTP_METHOD_GET, api_key, resp, sizeof(resp));
-    if (st < 200 || st >= 300) {
-        strlcpy(output, resp, output_size);
-        return;
-    }
-
-    cJSON *data = unwrap_data(resp, output, output_size);
-    if (!data) return;
-
-    cJSON *r = cJSON_GetObjectItem(data, "runningContainers");
-    cJSON *s = cJSON_GetObjectItem(data, "stoppedContainers");
-    cJSON *t = cJSON_GetObjectItem(data, "totalContainers");
-    snprintf(output, output_size, "Running: %d, Stopped: %d, Total: %d",
-             (r && cJSON_IsNumber(r)) ? (int)r->valuedouble : -1,
-             (s && cJSON_IsNumber(s)) ? (int)s->valuedouble : -1,
-             (t && cJSON_IsNumber(t)) ? (int)t->valuedouble : -1);
-    cJSON_Delete(data);
-}
-
+/*
+ * List containers — fetches first page (limit=20) to keep response size
+ * manageable. Full container JSON (labels, networks, mounts) can be 2-3 KB
+ * per container; fetching all at once is impractical on embedded hardware.
+ * The response includes totals from the pagination envelope.
+ */
 static void action_containers(const char *base_url, const char *env_id, const char *api_key,
                               char *output, size_t output_size)
 {
     char url[256];
-
-    /* Heap-allocate response buffer — container list can be large (32+ containers) */
     const size_t resp_size = 16 * 1024;
     char *resp = (char *)malloc(resp_size);
-    if (!resp) {
-        snprintf(output, output_size, "Error: out of memory");
-        return;
-    }
+    if (!resp) { snprintf(output, output_size, "Error: out of memory"); return; }
 
-    /* limit=100 to fetch all containers in one request (default page size = 20) */
-    build_url(url, sizeof(url), base_url, env_id, "/containers?limit=100");
+    build_url(url, sizeof(url), base_url, env_id, "/containers?limit=20&order=asc");
     int st = arcane_request(url, HTTP_METHOD_GET, api_key, resp, resp_size);
-    if (st < 200 || st >= 300) {
-        strlcpy(output, resp, output_size);
-        free(resp);
-        return;
-    }
+    if (st < 200 || st >= 300) { strlcpy(output, resp, output_size); free(resp); return; }
 
-    /* Response: { success, data: [...], counts: {…}, pagination: {…} } */
-    cJSON *data = unwrap_data(resp, output, output_size);
+    int grand_total = 0;
+    cJSON *data = parse_list_response(resp, &grand_total, output, output_size);
     free(resp);
     if (!data) return;
-
-    if (!cJSON_IsArray(data)) {
-        snprintf(output, output_size, "Error: 'data' is not an array");
-        cJSON_Delete(data);
-        return;
-    }
 
     size_t off = 0;
     int count = cJSON_GetArraySize(data);
@@ -287,9 +301,16 @@ static void action_containers(const char *base_url, const char *env_id, const ch
 
     if (off == 0) {
         snprintf(output, output_size, "No containers found.");
-    } else if (output[off - 1] == '\n') {
-        output[off - 1] = '\0';
+        return;
     }
+
+    /* Trim trailing newline, then append totals */
+    if (output[off - 1] == '\n') off--;
+    if (grand_total > count) {
+        off += snprintf(output + off, output_size - off,
+                        "\n(Showing %d of %d total)", count, grand_total);
+    }
+    output[off] = '\0';
 }
 
 static void action_stacks(const char *base_url, const char *env_id, const char *api_key,
@@ -300,19 +321,10 @@ static void action_stacks(const char *base_url, const char *env_id, const char *
 
     build_url(url, sizeof(url), base_url, env_id, "/projects?limit=100");
     int st = arcane_request(url, HTTP_METHOD_GET, api_key, resp, sizeof(resp));
-    if (st < 200 || st >= 300) {
-        strlcpy(output, resp, output_size);
-        return;
-    }
+    if (st < 200 || st >= 300) { strlcpy(output, resp, output_size); return; }
 
-    cJSON *data = unwrap_data(resp, output, output_size);
+    cJSON *data = parse_list_response(resp, NULL, output, output_size);
     if (!data) return;
-
-    if (!cJSON_IsArray(data)) {
-        snprintf(output, output_size, "Error: 'data' is not an array");
-        cJSON_Delete(data);
-        return;
-    }
 
     size_t off = 0;
     int count = cJSON_GetArraySize(data);
@@ -343,29 +355,24 @@ static void action_stacks(const char *base_url, const char *env_id, const char *
     }
 }
 
+/*
+ * Use ?search=<name> so we only download the matching container(s) instead
+ * of the full list (which is too large to parse on embedded hardware).
+ */
 static void action_container_lifecycle(const char *base_url, const char *env_id,
                                        const char *api_key, const char *action,
                                        const char *name, char *output, size_t output_size)
 {
-    char url[256];
+    char url[320];
+    char path[192];
+    char resp[4096];
 
-    const size_t resp_size = 16 * 1024;
-    char *resp = (char *)malloc(resp_size);
-    if (!resp) {
-        snprintf(output, output_size, "Error: out of memory");
-        return;
-    }
+    snprintf(path, sizeof(path), "/containers?search=%s&limit=5", name);
+    build_url(url, sizeof(url), base_url, env_id, path);
+    int st = arcane_request(url, HTTP_METHOD_GET, api_key, resp, sizeof(resp));
+    if (st < 200 || st >= 300) { strlcpy(output, resp, output_size); return; }
 
-    build_url(url, sizeof(url), base_url, env_id, "/containers?limit=100");
-    int st = arcane_request(url, HTTP_METHOD_GET, api_key, resp, resp_size);
-    if (st < 200 || st >= 300) {
-        strlcpy(output, resp, output_size);
-        free(resp);
-        return;
-    }
-
-    cJSON *data = unwrap_data(resp, output, output_size);
-    free(resp);
+    cJSON *data = parse_list_response(resp, NULL, output, output_size);
     if (!data) return;
 
     char id_buf[128] = {0};
@@ -390,14 +397,15 @@ static void action_container_lifecycle(const char *base_url, const char *env_id,
     cJSON_Delete(data);
 
     if (!id_buf[0]) {
-        snprintf(output, output_size, "Error: container '%s' not found", name);
+        snprintf(output, output_size,
+                 "Error: container '%s' not found (searched %d results)", name, count);
         return;
     }
 
     char small_resp[512];
-    char path[256];
-    snprintf(path, sizeof(path), "/containers/%s/%s", id_buf, action);
-    build_url(url, sizeof(url), base_url, env_id, path);
+    char lpath[256];
+    snprintf(lpath, sizeof(lpath), "/containers/%s/%s", id_buf, action);
+    build_url(url, sizeof(url), base_url, env_id, lpath);
     arcane_request(url, HTTP_METHOD_POST, api_key, small_resp, sizeof(small_resp));
 
     snprintf(output, output_size, "Container '%s' %s: %s", name, action,
@@ -413,12 +421,9 @@ static void action_stack_lifecycle(const char *base_url, const char *env_id,
 
     build_url(url, sizeof(url), base_url, env_id, "/projects?limit=100");
     int st = arcane_request(url, HTTP_METHOD_GET, api_key, resp, sizeof(resp));
-    if (st < 200 || st >= 300) {
-        strlcpy(output, resp, output_size);
-        return;
-    }
+    if (st < 200 || st >= 300) { strlcpy(output, resp, output_size); return; }
 
-    cJSON *data = unwrap_data(resp, output, output_size);
+    cJSON *data = parse_list_response(resp, NULL, output, output_size);
     if (!data) return;
 
     char id_buf[128] = {0};

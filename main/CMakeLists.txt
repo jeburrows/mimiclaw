@@ -30,6 +30,7 @@ idf_component_register(
         "tools/tool_http_get.c"
         "tools/tool_version.c"
         "tools/tool_wled.c"
+        "tools/tool_arcane.c"
         "skills/skill_loader.c"
     INCLUDE_DIRS
         "."

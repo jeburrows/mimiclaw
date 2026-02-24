@@ -37,6 +37,15 @@
 #ifndef MIMI_SECRET_OTA_URL
 #define MIMI_SECRET_OTA_URL         ""
 #endif
+#ifndef MIMI_SECRET_ARCANE_URL
+#define MIMI_SECRET_ARCANE_URL      ""
+#endif
+#ifndef MIMI_SECRET_ARCANE_API_KEY
+#define MIMI_SECRET_ARCANE_API_KEY  ""
+#endif
+#ifndef MIMI_SECRET_ARCANE_ENV_ID
+#define MIMI_SECRET_ARCANE_ENV_ID   "1"
+#endif
 
 /* WiFi */
 #define MIMI_WIFI_MAX_RETRY          10

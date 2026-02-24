@@ -7,6 +7,7 @@
 #include "tools/tool_http_get.h"
 #include "tools/tool_version.h"
 #include "tools/tool_wled.h"
+#include "tools/tool_arcane.h"
 
 #include <string.h>
 #include "esp_log.h"
@@ -14,7 +15,7 @@
 
 static const char *TAG = "tools";
 
-#define MAX_TOOLS 14
+#define MAX_TOOLS 15
 
 static mimi_tool_t s_tools[MAX_TOOLS];
 static int s_tool_count = 0;
@@ -242,6 +243,25 @@ esp_err_t tool_registry_init(void)
         .execute = tool_wled_execute,
     };
     register_tool(&wled);
+
+    /* Register docker_status */
+    mimi_tool_t arcane = {
+        .name = "docker_status",
+        .description = "Check and control Docker containers and stacks via the Arcane API. "
+                       "Use for any request about Docker servers, containers, stacks, or services.",
+        .input_schema_json =
+            "{\"type\":\"object\","
+            "\"properties\":{"
+            "\"action\":{\"type\":\"string\","
+              "\"description\":\"status (overview counts), containers (list all), stacks (list all), "
+              "start/stop/restart (container by name), stack_start/stack_stop/stack_restart (stack by name)\"},"
+            "\"name\":{\"type\":\"string\","
+              "\"description\":\"Container or stack name (required for start/stop/restart actions)\"}"
+            "},"
+            "\"required\":[\"action\"]}",
+        .execute = tool_arcane_execute,
+    };
+    register_tool(&arcane);
 
     build_tools_json();
 

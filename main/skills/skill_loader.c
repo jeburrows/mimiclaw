@@ -162,6 +162,43 @@ static const char *TAG = "skills";
     "User: \"Turn off\"\n" \
     "→ wled_control({\"action\": \"off\"})\n"
 
+#define BUILTIN_DOCKER \
+    "# Docker Status\n" \
+    "\n" \
+    "Check and control Docker containers and stacks via the Arcane API.\n" \
+    "Use for ANY request about Docker, containers, stacks, or services.\n" \
+    "Trigger words: docker, container, stack, service, running, stopped.\n" \
+    "\n" \
+    "## CRITICAL: Always call docker_status — never guess or answer from memory\n" \
+    "You MUST call docker_status for EVERY Docker request. No exceptions.\n" \
+    "\n" \
+    "## Actions\n" \
+    "- status — quick overview: running/stopped container counts, stack counts\n" \
+    "- containers — full list of all containers with state and image\n" \
+    "- stacks — full list of all stacks with service counts\n" \
+    "- start / stop / restart — control a container by name\n" \
+    "- stack_start / stack_stop / stack_restart — control a stack by name\n" \
+    "\n" \
+    "## Examples\n" \
+    "User: \"How's my Docker server?\"\n" \
+    "→ docker_status({\"action\": \"status\"})\n" \
+    "\n" \
+    "User: \"List all containers\"\n" \
+    "→ docker_status({\"action\": \"containers\"})\n" \
+    "\n" \
+    "User: \"Show my stacks\"\n" \
+    "→ docker_status({\"action\": \"stacks\"})\n" \
+    "\n" \
+    "User: \"Restart the nginx container\"\n" \
+    "→ docker_status({\"action\": \"restart\", \"name\": \"nginx\"})\n" \
+    "\n" \
+    "User: \"Start the monitoring stack\"\n" \
+    "→ docker_status({\"action\": \"stack_start\", \"name\": \"monitoring\"})\n" \
+    "\n" \
+    "## Setup\n" \
+    "Requires MIMI_SECRET_ARCANE_URL, MIMI_SECRET_ARCANE_API_KEY, and\n" \
+    "MIMI_SECRET_ARCANE_ENV_ID set in mimi_secrets.h before building.\n"
+
 /* Built-in skill registry */
 typedef struct {
     const char *filename;   /* e.g. "weather" */
@@ -174,6 +211,7 @@ static const builtin_skill_t s_builtins[] = {
     { "skill-creator",  BUILTIN_SKILL_CREATOR  },
     { "ota-update",     BUILTIN_OTA_UPDATE     },
     { "wled",           BUILTIN_WLED           },
+    { "docker",         BUILTIN_DOCKER         },
 };
 
 #define NUM_BUILTINS (sizeof(s_builtins) / sizeof(s_builtins[0]))

@@ -256,8 +256,8 @@ esp_err_t tool_registry_init(void)
               "\"description\":\"counts (container counts only), "
               "status (counts + stack summary), containers (list first 20), stacks (list all), "
               "start/stop/restart/redeploy (container by name), "
-              "vuln_scan (Trivy scan + severity summary for container), "
-              "vuln_list (top CRITICAL/HIGH CVEs for container), "
+              "vuln_scan (severity summary; triggers scan automatically if not yet scanned), "
+              "vuln_list (top 5 CRITICAL/HIGH CVEs with NIST links for container), "
               "stack_start/stack_stop/stack_restart/stack_redeploy (stack by name)\"},"
             "\"name\":{\"type\":\"string\","
               "\"description\":\"Container or stack name (required for start/stop/restart/redeploy/stack_* actions)\"}"
@@ -278,13 +278,34 @@ const char *tool_registry_get_tools_json(void)
     return s_tools_json;
 }
 
+/*
+ * Strip bytes that would produce invalid UTF-8 when the tool result is
+ * embedded in a JSON string sent to the Anthropic API.
+ *
+ * Specifically: cJSON can decode lone UTF-16 surrogate escape sequences
+ * (\uD800–\uDFFF) from upstream JSON into WTF-8 byte sequences (0xED 0xA?/0xB?
+ * 0x8?), which are not valid UTF-8.  Any byte above 0x7E or below 0x20
+ * (except \n and \t) is replaced with '?' — all meaningful tool output
+ * (counts, IDs, severity levels, container names) is ASCII anyway.
+ */
+static void sanitize_tool_output(char *s)
+{
+    for (unsigned char *p = (unsigned char *)s; *p; p++) {
+        if (*p > 0x7E || (*p < 0x20 && *p != '\n' && *p != '\t')) {
+            *p = '?';
+        }
+    }
+}
+
 esp_err_t tool_registry_execute(const char *name, const char *input_json,
                                 char *output, size_t output_size)
 {
     for (int i = 0; i < s_tool_count; i++) {
         if (strcmp(s_tools[i].name, name) == 0) {
             ESP_LOGI(TAG, "Executing tool: %s", name);
-            return s_tools[i].execute(input_json, output, output_size);
+            esp_err_t err = s_tools[i].execute(input_json, output, output_size);
+            sanitize_tool_output(output);
+            return err;
         }
     }
 

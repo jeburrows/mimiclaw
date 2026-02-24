@@ -529,8 +529,8 @@ static void action_vuln_scan(const char *base_url, const char *env_id,
         return;
     }
 
-    char url[320];
-    char path[256];
+    char url[384];
+    char path[512];
     char resp[512];
 
     /* Trigger the scan (blocks until Trivy finishes) */
@@ -595,8 +595,8 @@ static void action_vuln_list(const char *base_url, const char *env_id,
         return;
     }
 
-    char url[320];
-    char path[256];
+    char url[384];
+    char path[512];
     char resp[4096];
 
     snprintf(path, sizeof(path),

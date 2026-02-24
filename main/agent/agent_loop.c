@@ -220,6 +220,20 @@ static void agent_loop_task(void *arg)
 
         ESP_LOGI(TAG, "Processing message from %s:%s", msg.channel, msg.chat_id);
 
+        /* Handle /reset — clears session so user can recover from corrupt state */
+        if (msg.content && strcmp(msg.content, "/reset") == 0) {
+            session_clear(msg.chat_id);
+            mimi_msg_t out = {0};
+            strncpy(out.channel, msg.channel, sizeof(out.channel) - 1);
+            strncpy(out.chat_id, msg.chat_id, sizeof(out.chat_id) - 1);
+            out.content = strdup("Session cleared. Starting fresh!");
+            if (out.content && message_bus_push_outbound(&out) != ESP_OK) {
+                free(out.content);
+            }
+            free(msg.content);
+            continue;
+        }
+
         /* 1. Build system prompt */
         context_build_system_prompt(system_prompt, MIMI_CONTEXT_BUF_SIZE);
         append_turn_context_prompt(system_prompt, MIMI_CONTEXT_BUF_SIZE, &msg);

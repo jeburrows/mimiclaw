@@ -125,6 +125,62 @@ esp_err_t session_get_history_json(const char *chat_id, char *buf, size_t size, 
         cJSON_Delete(messages[idx]);
     }
 
+    /* Strip orphaned tool_use/tool_result blocks that occur when the ring
+     * buffer slices a paired sequence.  Both cases produce API errors:
+     *
+     *  (a) Leading user message whose content is a tool_result array —
+     *      the preceding assistant tool_use was evicted by the ring buffer.
+     *
+     *  (b) Trailing assistant message whose content contains only tool_use
+     *      blocks with no following user tool_result message.
+     */
+
+    /* (a) Remove any leading orphaned tool_result user messages */
+    while (cJSON_GetArraySize(arr) > 0) {
+        cJSON *first   = cJSON_GetArrayItem(arr, 0);
+        cJSON *f_role  = cJSON_GetObjectItem(first, "role");
+        cJSON *f_cont  = cJSON_GetObjectItem(first, "content");
+        if (f_role && cJSON_IsString(f_role) &&
+            strcmp(f_role->valuestring, "user") == 0 &&
+            f_cont && cJSON_IsArray(f_cont)) {
+            cJSON *blk0 = cJSON_GetArrayItem(f_cont, 0);
+            cJSON *t    = blk0 ? cJSON_GetObjectItem(blk0, "type") : NULL;
+            if (t && cJSON_IsString(t) &&
+                strcmp(t->valuestring, "tool_result") == 0) {
+                ESP_LOGW(TAG, "Dropping orphaned leading tool_result block");
+                cJSON_DeleteItemFromArray(arr, 0);
+                continue;
+            }
+        }
+        break;
+    }
+
+    /* (b) Remove trailing assistant message that only contains tool_use */
+    int arr_size = cJSON_GetArraySize(arr);
+    if (arr_size > 0) {
+        cJSON *last   = cJSON_GetArrayItem(arr, arr_size - 1);
+        cJSON *l_role = cJSON_GetObjectItem(last, "role");
+        cJSON *l_cont = cJSON_GetObjectItem(last, "content");
+        if (l_role && cJSON_IsString(l_role) &&
+            strcmp(l_role->valuestring, "assistant") == 0 &&
+            l_cont && cJSON_IsArray(l_cont)) {
+            bool has_tool_use = false;
+            bool has_text     = false;
+            cJSON *blk;
+            cJSON_ArrayForEach(blk, l_cont) {
+                cJSON *t = cJSON_GetObjectItem(blk, "type");
+                if (t && cJSON_IsString(t)) {
+                    if (strcmp(t->valuestring, "tool_use") == 0) has_tool_use = true;
+                    if (strcmp(t->valuestring, "text")     == 0) has_text     = true;
+                }
+            }
+            if (has_tool_use && !has_text) {
+                ESP_LOGW(TAG, "Dropping orphaned trailing tool_use block");
+                cJSON_DeleteItemFromArray(arr, arr_size - 1);
+            }
+        }
+    }
+
     char *json_str = cJSON_PrintUnformatted(arr);
     cJSON_Delete(arr);
 

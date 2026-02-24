@@ -37,7 +37,7 @@ static esp_err_t arcane_http_event(esp_http_client_event_t *evt)
  * Non-2xx: writes "HTTP <N> error: <body>" into out and returns the status.
  */
 static int arcane_request(const char *url, esp_http_client_method_t method,
-                          const char *api_key,
+                          const char *api_key, int timeout_ms,
                           char *out, size_t out_size)
 {
     arcane_body_t body = { .buf = out, .len = 0, .max = (int)out_size };
@@ -46,7 +46,7 @@ static int arcane_request(const char *url, esp_http_client_method_t method,
     esp_http_client_config_t cfg = {
         .url           = url,
         .method        = method,
-        .timeout_ms    = 8000,
+        .timeout_ms    = timeout_ms,
         .event_handler = arcane_http_event,
         .user_data     = &body,
     };
@@ -187,7 +187,7 @@ static void action_counts(const char *base_url, const char *env_id, const char *
     char resp[512];
 
     build_url(url, sizeof(url), base_url, env_id, "/containers/counts");
-    int st = arcane_request(url, HTTP_METHOD_GET, api_key, resp, sizeof(resp));
+    int st = arcane_request(url, HTTP_METHOD_GET, api_key, 8000, resp, sizeof(resp));
     if (st < 200 || st >= 300) { strlcpy(output, resp, output_size); return; }
 
     cJSON *data = parse_counts_response(resp, output, output_size);
@@ -210,7 +210,7 @@ static void action_status(const char *base_url, const char *env_id, const char *
     char resp[512];
 
     build_url(url, sizeof(url), base_url, env_id, "/containers/counts");
-    int st = arcane_request(url, HTTP_METHOD_GET, api_key, resp, sizeof(resp));
+    int st = arcane_request(url, HTTP_METHOD_GET, api_key, 8000, resp, sizeof(resp));
     if (st < 200 || st >= 300) { strlcpy(output, resp, output_size); return; }
 
     cJSON *data = parse_counts_response(resp, output, output_size);
@@ -226,7 +226,7 @@ static void action_status(const char *base_url, const char *env_id, const char *
     cJSON_Delete(data);
 
     build_url(url, sizeof(url), base_url, env_id, "/projects/counts");
-    st = arcane_request(url, HTTP_METHOD_GET, api_key, resp, sizeof(resp));
+    st = arcane_request(url, HTTP_METHOD_GET, api_key, 8000, resp, sizeof(resp));
 
     int running_p = 0, total_p = 0;
     if (st >= 200 && st < 300) {
@@ -263,7 +263,7 @@ static void action_containers(const char *base_url, const char *env_id, const ch
     if (!resp) { snprintf(output, output_size, "Error: out of memory"); return; }
 
     build_url(url, sizeof(url), base_url, env_id, "/containers?limit=20&order=asc");
-    int st = arcane_request(url, HTTP_METHOD_GET, api_key, resp, resp_size);
+    int st = arcane_request(url, HTTP_METHOD_GET, api_key, 8000, resp, resp_size);
     if (st < 200 || st >= 300) { strlcpy(output, resp, output_size); free(resp); return; }
 
     int grand_total = 0;
@@ -320,7 +320,7 @@ static void action_stacks(const char *base_url, const char *env_id, const char *
     char resp[4096];
 
     build_url(url, sizeof(url), base_url, env_id, "/projects?limit=100");
-    int st = arcane_request(url, HTTP_METHOD_GET, api_key, resp, sizeof(resp));
+    int st = arcane_request(url, HTTP_METHOD_GET, api_key, 8000, resp, sizeof(resp));
     if (st < 200 || st >= 300) { strlcpy(output, resp, output_size); return; }
 
     cJSON *data = parse_list_response(resp, NULL, output, output_size);
@@ -369,7 +369,7 @@ static void action_container_lifecycle(const char *base_url, const char *env_id,
 
     snprintf(path, sizeof(path), "/containers?search=%s&limit=5", name);
     build_url(url, sizeof(url), base_url, env_id, path);
-    int st = arcane_request(url, HTTP_METHOD_GET, api_key, resp, sizeof(resp));
+    int st = arcane_request(url, HTTP_METHOD_GET, api_key, 8000, resp, sizeof(resp));
     if (st < 200 || st >= 300) { strlcpy(output, resp, output_size); return; }
 
     cJSON *data = parse_list_response(resp, NULL, output, output_size);
@@ -406,7 +406,7 @@ static void action_container_lifecycle(const char *base_url, const char *env_id,
     char lpath[256];
     snprintf(lpath, sizeof(lpath), "/containers/%s/%s", id_buf, action);
     build_url(url, sizeof(url), base_url, env_id, lpath);
-    arcane_request(url, HTTP_METHOD_POST, api_key, small_resp, sizeof(small_resp));
+    arcane_request(url, HTTP_METHOD_POST, api_key, 8000, small_resp, sizeof(small_resp));
 
     snprintf(output, output_size, "Container '%s' %s: %s", name, action,
              small_resp[0] ? small_resp : "OK");
@@ -420,7 +420,7 @@ static void action_stack_lifecycle(const char *base_url, const char *env_id,
     char resp[4096];
 
     build_url(url, sizeof(url), base_url, env_id, "/projects?limit=100");
-    int st = arcane_request(url, HTTP_METHOD_GET, api_key, resp, sizeof(resp));
+    int st = arcane_request(url, HTTP_METHOD_GET, api_key, 8000, resp, sizeof(resp));
     if (st < 200 || st >= 300) { strlcpy(output, resp, output_size); return; }
 
     cJSON *data = parse_list_response(resp, NULL, output, output_size);
@@ -453,10 +453,143 @@ static void action_stack_lifecycle(const char *base_url, const char *env_id,
     char path[256];
     snprintf(path, sizeof(path), "/projects/%s/%s", id_buf, verb);
     build_url(url, sizeof(url), base_url, env_id, path);
-    arcane_request(url, HTTP_METHOD_POST, api_key, small_resp, sizeof(small_resp));
+    arcane_request(url, HTTP_METHOD_POST, api_key, 8000, small_resp, sizeof(small_resp));
 
     snprintf(output, output_size, "Stack '%s' %s: %s", name, verb,
              small_resp[0] ? small_resp : "OK");
+}
+
+/*
+ * Pull latest image and recreate a single container.
+ * Uses ?search=<name> to avoid downloading the full container list.
+ * Calls POST /containers/{id}/update (Arcane combined pull + recreate).
+ */
+static void action_redeploy(const char *base_url, const char *env_id,
+                            const char *api_key, const char *name,
+                            char *output, size_t output_size)
+{
+    char url[320];
+    char path[192];
+    char resp[4096];
+
+    /* Find container by name using search */
+    snprintf(path, sizeof(path), "/containers?search=%s&limit=5", name);
+    build_url(url, sizeof(url), base_url, env_id, path);
+    int st = arcane_request(url, HTTP_METHOD_GET, api_key, 8000, resp, sizeof(resp));
+    if (st < 200 || st >= 300) { strlcpy(output, resp, output_size); return; }
+
+    cJSON *data = parse_list_response(resp, NULL, output, output_size);
+    if (!data) return;
+
+    char id_buf[128] = {0};
+    int count = cJSON_GetArraySize(data);
+    for (int i = 0; i < count; i++) {
+        cJSON *c = cJSON_GetArrayItem(data, i);
+        cJSON *names = cJSON_GetObjectItem(c, "names");
+        if (!names || !cJSON_IsArray(names)) continue;
+        int ncount = cJSON_GetArraySize(names);
+        for (int j = 0; j < ncount; j++) {
+            cJSON *n0 = cJSON_GetArrayItem(names, j);
+            if (!cJSON_IsString(n0)) continue;
+            const char *cname = n0->valuestring;
+            if (cname[0] == '/') cname++;
+            if (strcasecmp(cname, name) == 0) {
+                get_id_string(c, id_buf, sizeof(id_buf));
+                break;
+            }
+        }
+        if (id_buf[0]) break;
+    }
+    cJSON_Delete(data);
+
+    if (!id_buf[0]) {
+        snprintf(output, output_size,
+                 "Error: container '%s' not found (searched %d results)", name, count);
+        return;
+    }
+
+    /* POST /containers/{id}/update — pull + recreate, may take time */
+    char small_resp[512];
+    char lpath[256];
+    snprintf(lpath, sizeof(lpath), "/containers/%s/update", id_buf);
+    build_url(url, sizeof(url), base_url, env_id, lpath);
+    st = arcane_request(url, HTTP_METHOD_POST, api_key, 120000, small_resp, sizeof(small_resp));
+
+    if (st >= 200 && st < 300) {
+        snprintf(output, output_size,
+                 "Container '%s' redeployed (pull + recreate): %s",
+                 name, small_resp[0] ? small_resp : "OK");
+    } else {
+        snprintf(output, output_size,
+                 "Redeploy failed for '%s': %s", name, small_resp);
+    }
+}
+
+/*
+ * Pull all images for a stack then redeploy it (down + up).
+ * Calls POST /projects/{id}/pull (streaming, long timeout) then
+ * POST /projects/{id}/redeploy.
+ */
+static void action_stack_redeploy(const char *base_url, const char *env_id,
+                                  const char *api_key, const char *name,
+                                  char *output, size_t output_size)
+{
+    char url[256];
+    char resp[4096];
+
+    /* Find stack by name */
+    build_url(url, sizeof(url), base_url, env_id, "/projects?limit=100");
+    int st = arcane_request(url, HTTP_METHOD_GET, api_key, 8000, resp, sizeof(resp));
+    if (st < 200 || st >= 300) { strlcpy(output, resp, output_size); return; }
+
+    cJSON *data = parse_list_response(resp, NULL, output, output_size);
+    if (!data) return;
+
+    char id_buf[128] = {0};
+    int count = cJSON_GetArraySize(data);
+    for (int i = 0; i < count; i++) {
+        cJSON *p = cJSON_GetArrayItem(data, i);
+        cJSON *name_item = cJSON_GetObjectItem(p, "name");
+        if (!name_item || !cJSON_IsString(name_item)) continue;
+        if (strcasecmp(name_item->valuestring, name) == 0) {
+            get_id_string(p, id_buf, sizeof(id_buf));
+            break;
+        }
+    }
+    cJSON_Delete(data);
+
+    if (!id_buf[0]) {
+        snprintf(output, output_size, "Error: stack '%s' not found", name);
+        return;
+    }
+
+    /* Step 1: pull images (streaming response, long timeout) */
+    char pull_resp[1024];
+    char path[256];
+    snprintf(path, sizeof(path), "/projects/%s/pull", id_buf);
+    build_url(url, sizeof(url), base_url, env_id, path);
+    st = arcane_request(url, HTTP_METHOD_POST, api_key, 120000, pull_resp, sizeof(pull_resp));
+
+    if (st < 200 || st >= 300) {
+        snprintf(output, output_size,
+                 "Pull failed for stack '%s': %s", name, pull_resp);
+        return;
+    }
+
+    /* Step 2: redeploy (down + up) */
+    char deploy_resp[512];
+    snprintf(path, sizeof(path), "/projects/%s/redeploy", id_buf);
+    build_url(url, sizeof(url), base_url, env_id, path);
+    st = arcane_request(url, HTTP_METHOD_POST, api_key, 60000, deploy_resp, sizeof(deploy_resp));
+
+    if (st >= 200 && st < 300) {
+        snprintf(output, output_size,
+                 "Stack '%s' pulled and redeployed: %s",
+                 name, deploy_resp[0] ? deploy_resp : "OK");
+    } else {
+        snprintf(output, output_size,
+                 "Pull OK but redeploy failed for stack '%s': %s", name, deploy_resp);
+    }
 }
 
 /* ── Entry point ─────────────────────────────────────────────── */
@@ -528,10 +661,24 @@ esp_err_t tool_arcane_execute(const char *input_json, char *output, size_t outpu
                                    output, output_size);
         }
 
+    } else if (strcmp(action, "redeploy") == 0) {
+        if (!name[0]) {
+            snprintf(output, output_size, "Error: 'name' is required for redeploy");
+        } else {
+            action_redeploy(base_url, env_id, api_key, name, output, output_size);
+        }
+
+    } else if (strcmp(action, "stack_redeploy") == 0) {
+        if (!name[0]) {
+            snprintf(output, output_size, "Error: 'name' is required for stack_redeploy");
+        } else {
+            action_stack_redeploy(base_url, env_id, api_key, name, output, output_size);
+        }
+
     } else {
         snprintf(output, output_size,
                  "Error: unknown action '%s'. Valid: counts, status, containers, stacks, "
-                 "start, stop, restart, stack_start, stack_stop, stack_restart",
+                 "start, stop, restart, redeploy, stack_start, stack_stop, stack_restart, stack_redeploy",
                  action);
     }
 

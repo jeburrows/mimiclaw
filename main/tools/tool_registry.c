@@ -253,11 +253,12 @@ esp_err_t tool_registry_init(void)
             "{\"type\":\"object\","
             "\"properties\":{"
             "\"action\":{\"type\":\"string\","
-              "\"description\":\"counts (container counts only — fastest test of connectivity), "
-              "status (counts + stack summary), containers (list all), stacks (list all), "
-              "start/stop/restart (container by name), stack_start/stack_stop/stack_restart (stack by name)\"},"
+              "\"description\":\"counts (container counts only), "
+              "status (counts + stack summary), containers (list first 20), stacks (list all), "
+              "start/stop/restart (container by name), redeploy (pull+recreate container), "
+              "stack_start/stack_stop/stack_restart/stack_redeploy (stack by name)\"},"
             "\"name\":{\"type\":\"string\","
-              "\"description\":\"Container or stack name (required for start/stop/restart actions)\"}"
+              "\"description\":\"Container or stack name (required for start/stop/restart/redeploy/stack_* actions)\"}"
             "},"
             "\"required\":[\"action\"]}",
         .execute = tool_arcane_execute,

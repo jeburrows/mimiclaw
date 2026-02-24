@@ -178,7 +178,9 @@ static const char *TAG = "skills";
     "- containers — full list of all containers with state and image\n" \
     "- stacks — full list of all stacks with service counts\n" \
     "- start / stop / restart — control a container by name\n" \
+    "- redeploy — pull latest image and recreate a container by name\n" \
     "- stack_start / stack_stop / stack_restart — control a stack by name\n" \
+    "- stack_redeploy — pull all images and redeploy a stack by name (takes 1-2 min)\n" \
     "\n" \
     "## Examples\n" \
     "User: \"How many containers are running?\"\n" \
@@ -196,8 +198,14 @@ static const char *TAG = "skills";
     "User: \"Restart the nginx container\"\n" \
     "→ docker_status({\"action\": \"restart\", \"name\": \"nginx\"})\n" \
     "\n" \
+    "User: \"Update the nginx container\"\n" \
+    "→ docker_status({\"action\": \"redeploy\", \"name\": \"nginx\"})\n" \
+    "\n" \
     "User: \"Start the monitoring stack\"\n" \
     "→ docker_status({\"action\": \"stack_start\", \"name\": \"monitoring\"})\n" \
+    "\n" \
+    "User: \"Update the monitoring stack\"\n" \
+    "→ docker_status({\"action\": \"stack_redeploy\", \"name\": \"monitoring\"})\n" \
     "\n" \
     "## Setup\n" \
     "Requires MIMI_SECRET_ARCANE_URL, MIMI_SECRET_ARCANE_API_KEY, and\n" \

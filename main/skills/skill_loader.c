@@ -179,6 +179,8 @@ static const char *TAG = "skills";
     "- stacks — full list of all stacks with service counts\n" \
     "- start / stop / restart — control a container by name\n" \
     "- redeploy — pull latest image and recreate a container by name\n" \
+    "- vuln_scan — run Trivy scan on a container's image, return severity counts\n" \
+    "- vuln_list — list top CRITICAL/HIGH CVEs for a container's image\n" \
     "- stack_start / stack_stop / stack_restart — control a stack by name\n" \
     "- stack_redeploy — pull all images and redeploy a stack by name (takes 1-2 min)\n" \
     "\n" \
@@ -206,6 +208,12 @@ static const char *TAG = "skills";
     "\n" \
     "User: \"Update the monitoring stack\"\n" \
     "→ docker_status({\"action\": \"stack_redeploy\", \"name\": \"monitoring\"})\n" \
+    "\n" \
+    "User: \"Scan nginx for vulnerabilities\"\n" \
+    "→ docker_status({\"action\": \"vuln_scan\", \"name\": \"nginx\"})\n" \
+    "\n" \
+    "User: \"What CVEs does nginx have?\"\n" \
+    "→ docker_status({\"action\": \"vuln_list\", \"name\": \"nginx\"})\n" \
     "\n" \
     "## Setup\n" \
     "Requires MIMI_SECRET_ARCANE_URL, MIMI_SECRET_ARCANE_API_KEY, and\n" \

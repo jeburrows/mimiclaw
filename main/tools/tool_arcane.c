@@ -161,6 +161,61 @@ static cJSON *parse_counts_response(const char *resp, char *errbuf, size_t errbu
     return data;
 }
 
+/* ── Helper: find container by name, return imageId ──────────── */
+
+/*
+ * Searches for a container matching `name` (exact, case-insensitive).
+ * On success fills image_id_buf and returns true.
+ * On failure writes an error message into errbuf and returns false.
+ */
+static bool find_container_image_id(const char *base_url, const char *env_id,
+                                    const char *api_key, const char *name,
+                                    char *image_id_buf, size_t image_id_size,
+                                    char *errbuf, size_t errbuf_size)
+{
+    char url[320];
+    char path[192];
+    char resp[4096];
+
+    snprintf(path, sizeof(path), "/containers?search=%s&limit=5", name);
+    build_url(url, sizeof(url), base_url, env_id, path);
+    int st = arcane_request(url, HTTP_METHOD_GET, api_key, 8000, resp, sizeof(resp));
+    if (st < 200 || st >= 300) { strlcpy(errbuf, resp, errbuf_size); return false; }
+
+    cJSON *data = parse_list_response(resp, NULL, errbuf, errbuf_size);
+    if (!data) return false;
+
+    bool found = false;
+    int count = cJSON_GetArraySize(data);
+    for (int i = 0; i < count && !found; i++) {
+        cJSON *c = cJSON_GetArrayItem(data, i);
+        cJSON *names = cJSON_GetObjectItem(c, "names");
+        if (!names || !cJSON_IsArray(names)) continue;
+        int ncount = cJSON_GetArraySize(names);
+        for (int j = 0; j < ncount; j++) {
+            cJSON *n0 = cJSON_GetArrayItem(names, j);
+            if (!cJSON_IsString(n0)) continue;
+            const char *cname = n0->valuestring;
+            if (cname[0] == '/') cname++;
+            if (strcasecmp(cname, name) == 0) {
+                cJSON *img_id = cJSON_GetObjectItem(c, "imageId");
+                if (img_id && cJSON_IsString(img_id) && img_id->valuestring[0]) {
+                    strlcpy(image_id_buf, img_id->valuestring, image_id_size);
+                    found = true;
+                }
+                break;
+            }
+        }
+    }
+    cJSON_Delete(data);
+
+    if (!found) {
+        snprintf(errbuf, errbuf_size,
+                 "Error: container '%s' not found or has no imageId", name);
+    }
+    return found;
+}
+
 /* ── Helper: extract id string from a cJSON object ───────────── */
 
 static bool get_id_string(cJSON *obj, char *id_buf, size_t id_size)
@@ -460,6 +515,144 @@ static void action_stack_lifecycle(const char *base_url, const char *env_id,
 }
 
 /*
+ * Trigger a Trivy vulnerability scan on the image used by a named container,
+ * then return a severity summary (CRITICAL / HIGH / MEDIUM / LOW / UNKNOWN).
+ * The scan POST may block for up to 120s while Trivy runs.
+ */
+static void action_vuln_scan(const char *base_url, const char *env_id,
+                             const char *api_key, const char *name,
+                             char *output, size_t output_size)
+{
+    char image_id[256] = {0};
+    if (!find_container_image_id(base_url, env_id, api_key, name,
+                                 image_id, sizeof(image_id), output, output_size)) {
+        return;
+    }
+
+    char url[320];
+    char path[256];
+    char resp[512];
+
+    /* Trigger the scan (blocks until Trivy finishes) */
+    snprintf(path, sizeof(path), "/images/%s/vulnerabilities/scan", image_id);
+    build_url(url, sizeof(url), base_url, env_id, path);
+    int st = arcane_request(url, HTTP_METHOD_POST, api_key, 120000, resp, sizeof(resp));
+    if (st < 200 || st >= 300) {
+        strlcpy(output, resp, output_size);
+        return;
+    }
+
+    /* Fetch compact summary (separate endpoint, small response) */
+    snprintf(path, sizeof(path), "/images/%s/vulnerabilities/summary", image_id);
+    build_url(url, sizeof(url), base_url, env_id, path);
+    st = arcane_request(url, HTTP_METHOD_GET, api_key, 8000, resp, sizeof(resp));
+    if (st < 200 || st >= 300) {
+        strlcpy(output, resp, output_size);
+        return;
+    }
+
+    cJSON *data = parse_counts_response(resp, output, output_size);
+    if (!data) return;
+
+    /* data → VulnerabilityScanSummary → { critical, high, medium, low, unknown, total } */
+    /* Arcane wraps this in another level: data.summary */
+    cJSON *summary = cJSON_GetObjectItem(data, "summary");
+    cJSON *src = summary ? summary : data;  /* handle both wrapped and flat */
+
+    int crit = 0, high = 0, med = 0, low = 0, unk = 0, total = 0;
+    cJSON *fc = cJSON_GetObjectItem(src, "critical");
+    cJSON *fh = cJSON_GetObjectItem(src, "high");
+    cJSON *fm = cJSON_GetObjectItem(src, "medium");
+    cJSON *fl = cJSON_GetObjectItem(src, "low");
+    cJSON *fu = cJSON_GetObjectItem(src, "unknown");
+    cJSON *ft = cJSON_GetObjectItem(src, "total");
+    if (fc && cJSON_IsNumber(fc)) crit  = (int)fc->valuedouble;
+    if (fh && cJSON_IsNumber(fh)) high  = (int)fh->valuedouble;
+    if (fm && cJSON_IsNumber(fm)) med   = (int)fm->valuedouble;
+    if (fl && cJSON_IsNumber(fl)) low   = (int)fl->valuedouble;
+    if (fu && cJSON_IsNumber(fu)) unk   = (int)fu->valuedouble;
+    if (ft && cJSON_IsNumber(ft)) total = (int)ft->valuedouble;
+    cJSON_Delete(data);
+
+    snprintf(output, output_size,
+             "Vulnerability scan for '%s': "
+             "CRITICAL=%d HIGH=%d MEDIUM=%d LOW=%d UNKNOWN=%d (total %d). "
+             "Ask for vuln_list to see specific CVEs.",
+             name, crit, high, med, low, unk, total);
+}
+
+/*
+ * List CRITICAL and HIGH CVEs for the image used by a named container.
+ * Filters to severity=CRITICAL,HIGH and returns up to 10 entries.
+ */
+static void action_vuln_list(const char *base_url, const char *env_id,
+                             const char *api_key, const char *name,
+                             char *output, size_t output_size)
+{
+    char image_id[256] = {0};
+    if (!find_container_image_id(base_url, env_id, api_key, name,
+                                 image_id, sizeof(image_id), output, output_size)) {
+        return;
+    }
+
+    char url[320];
+    char path[256];
+    char resp[4096];
+
+    snprintf(path, sizeof(path),
+             "/images/%s/vulnerabilities/list?severity=CRITICAL,HIGH&limit=10&order=desc",
+             image_id);
+    build_url(url, sizeof(url), base_url, env_id, path);
+    int st = arcane_request(url, HTTP_METHOD_GET, api_key, 8000, resp, sizeof(resp));
+    if (st < 200 || st >= 300) { strlcpy(output, resp, output_size); return; }
+
+    int grand_total = 0;
+    cJSON *data = parse_list_response(resp, &grand_total, output, output_size);
+    if (!data) return;
+
+    int count = cJSON_GetArraySize(data);
+    if (count == 0) {
+        snprintf(output, output_size,
+                 "No CRITICAL or HIGH vulnerabilities found for '%s'.", name);
+        cJSON_Delete(data);
+        return;
+    }
+
+    size_t off = 0;
+    for (int i = 0; i < count && off < output_size - 160; i++) {
+        cJSON *v = cJSON_GetArrayItem(data, i);
+
+        cJSON *vid = cJSON_GetObjectItem(v, "vulnerabilityId");
+        cJSON *sev = cJSON_GetObjectItem(v, "severity");
+        cJSON *pkg = cJSON_GetObjectItem(v, "pkgName");
+        cJSON *ins = cJSON_GetObjectItem(v, "installedVersion");
+        cJSON *fix = cJSON_GetObjectItem(v, "fixedVersion");
+        cJSON *tit = cJSON_GetObjectItem(v, "title");
+
+        const char *id_s  = (vid && cJSON_IsString(vid)) ? vid->valuestring : "?";
+        const char *sev_s = (sev && cJSON_IsString(sev)) ? sev->valuestring : "?";
+        const char *pkg_s = (pkg && cJSON_IsString(pkg)) ? pkg->valuestring : "?";
+        const char *ins_s = (ins && cJSON_IsString(ins)) ? ins->valuestring : "?";
+        const char *fix_s = (fix && cJSON_IsString(fix) && fix->valuestring[0])
+                            ? fix->valuestring : "no fix";
+        const char *tit_s = (tit && cJSON_IsString(tit)) ? tit->valuestring : "";
+
+        off += snprintf(output + off, output_size - off,
+                        "[%s] %s %s %s→%s %s\n",
+                        sev_s, id_s, pkg_s, ins_s, fix_s, tit_s);
+    }
+    cJSON_Delete(data);
+
+    if (grand_total > count) {
+        off += snprintf(output + off, output_size - off,
+                        "(Showing %d of %d CRITICAL/HIGH)", count, grand_total);
+    } else if (off > 0 && output[off - 1] == '\n') {
+        off--;
+    }
+    output[off] = '\0';
+}
+
+/*
  * Pull latest image and recreate a single container.
  * Uses ?search=<name> to avoid downloading the full container list.
  * Calls POST /containers/{id}/update (Arcane combined pull + recreate).
@@ -661,6 +854,20 @@ esp_err_t tool_arcane_execute(const char *input_json, char *output, size_t outpu
                                    output, output_size);
         }
 
+    } else if (strcmp(action, "vuln_scan") == 0) {
+        if (!name[0]) {
+            snprintf(output, output_size, "Error: 'name' (container name) is required for vuln_scan");
+        } else {
+            action_vuln_scan(base_url, env_id, api_key, name, output, output_size);
+        }
+
+    } else if (strcmp(action, "vuln_list") == 0) {
+        if (!name[0]) {
+            snprintf(output, output_size, "Error: 'name' (container name) is required for vuln_list");
+        } else {
+            action_vuln_list(base_url, env_id, api_key, name, output, output_size);
+        }
+
     } else if (strcmp(action, "redeploy") == 0) {
         if (!name[0]) {
             snprintf(output, output_size, "Error: 'name' is required for redeploy");
@@ -678,7 +885,8 @@ esp_err_t tool_arcane_execute(const char *input_json, char *output, size_t outpu
     } else {
         snprintf(output, output_size,
                  "Error: unknown action '%s'. Valid: counts, status, containers, stacks, "
-                 "start, stop, restart, redeploy, stack_start, stack_stop, stack_restart, stack_redeploy",
+                 "start, stop, restart, redeploy, vuln_scan, vuln_list, "
+                 "stack_start, stack_stop, stack_restart, stack_redeploy",
                  action);
     }
 

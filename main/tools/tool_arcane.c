@@ -32,9 +32,14 @@ static esp_err_t arcane_http_event(esp_http_client_event_t *evt)
     return ESP_OK;
 }
 
-static esp_err_t arcane_request(const char *url, esp_http_client_method_t method,
-                                const char *api_key,
-                                char *out, size_t out_size)
+/*
+ * Returns the HTTP status code (200, 401, 404, …) on a successful transport,
+ * or -1 on a transport-level error (connection refused, timeout, etc.).
+ * On non-2xx the response body (truncated) is placed in `out` as an error string.
+ */
+static int arcane_request(const char *url, esp_http_client_method_t method,
+                          const char *api_key,
+                          char *out, size_t out_size)
 {
     arcane_body_t body = { .buf = out, .len = 0, .max = (int)out_size };
     out[0] = '\0';
@@ -50,7 +55,7 @@ static esp_err_t arcane_request(const char *url, esp_http_client_method_t method
     esp_http_client_handle_t client = esp_http_client_init(&cfg);
     if (!client) {
         snprintf(out, out_size, "Error: failed to init HTTP client");
-        return ESP_FAIL;
+        return -1;
     }
 
     esp_http_client_set_header(client, "X-API-Key", api_key);
@@ -64,13 +69,30 @@ static esp_err_t arcane_request(const char *url, esp_http_client_method_t method
     esp_http_client_cleanup(client);
 
     if (err != ESP_OK) {
-        snprintf(out, out_size, "Error: request failed (%s)", esp_err_to_name(err));
-        return err;
+        snprintf(out, out_size, "Error: transport failed (%s)", esp_err_to_name(err));
+        return -1;
     }
 
     ESP_LOGI(TAG, "%s %s → HTTP %d (%d bytes)",
              method == HTTP_METHOD_GET ? "GET" : "POST", url, status, body.len);
-    return ESP_OK;
+
+    if (status < 200 || status >= 300) {
+        /* Preserve the raw response body for debugging, prepend the status */
+        char raw[256];
+        strlcpy(raw, out, sizeof(raw));
+        snprintf(out, out_size, "HTTP %d error: %.240s", status, raw);
+    }
+
+    return status;
+}
+
+/* ── URL builder: always includes /api prefix ─────────────────── */
+
+static void build_url(char *buf, size_t size,
+                      const char *base_url, const char *env_id,
+                      const char *path)
+{
+    snprintf(buf, size, "%s/api/environments/%s%s", base_url, env_id, path);
 }
 
 /* ── Helper: extract id string from a cJSON object ───────────── */
@@ -99,8 +121,12 @@ static void action_status(const char *base_url, const char *env_id, const char *
     char resp[512];
 
     /* Container counts */
-    snprintf(url, sizeof(url), "%s/environments/%s/containers/counts", base_url, env_id);
-    arcane_request(url, HTTP_METHOD_GET, api_key, resp, sizeof(resp));
+    build_url(url, sizeof(url), base_url, env_id, "/containers/counts");
+    int st = arcane_request(url, HTTP_METHOD_GET, api_key, resp, sizeof(resp));
+    if (st < 200 || st >= 300) {
+        strlcpy(output, resp, output_size);
+        return;
+    }
 
     int running_c = 0, stopped_c = 0, total_c = 0;
     cJSON *cc = cJSON_Parse(resp);
@@ -112,23 +138,27 @@ static void action_status(const char *base_url, const char *env_id, const char *
         if (s && cJSON_IsNumber(s)) stopped_c = (int)s->valuedouble;
         if (t && cJSON_IsNumber(t)) total_c   = (int)t->valuedouble;
         cJSON_Delete(cc);
+    } else {
+        snprintf(output, output_size, "Error: unexpected container counts response: %.200s", resp);
+        return;
     }
 
     /* Project counts */
-    snprintf(url, sizeof(url), "%s/environments/%s/projects/counts", base_url, env_id);
-    arcane_request(url, HTTP_METHOD_GET, api_key, resp, sizeof(resp));
+    build_url(url, sizeof(url), base_url, env_id, "/projects/counts");
+    st = arcane_request(url, HTTP_METHOD_GET, api_key, resp, sizeof(resp));
 
     int running_p = 0, total_p = 0;
-    cJSON *pc = cJSON_Parse(resp);
-    if (pc) {
-        /* Try common field name variants */
-        cJSON *r = cJSON_GetObjectItem(pc, "runningProjects");
-        if (!r) r = cJSON_GetObjectItem(pc, "running");
-        cJSON *t = cJSON_GetObjectItem(pc, "totalProjects");
-        if (!t) t = cJSON_GetObjectItem(pc, "total");
-        if (r && cJSON_IsNumber(r)) running_p = (int)r->valuedouble;
-        if (t && cJSON_IsNumber(t)) total_p   = (int)t->valuedouble;
-        cJSON_Delete(pc);
+    if (st >= 200 && st < 300) {
+        cJSON *pc = cJSON_Parse(resp);
+        if (pc) {
+            cJSON *r = cJSON_GetObjectItem(pc, "runningProjects");
+            if (!r) r = cJSON_GetObjectItem(pc, "running");
+            cJSON *t = cJSON_GetObjectItem(pc, "totalProjects");
+            if (!t) t = cJSON_GetObjectItem(pc, "total");
+            if (r && cJSON_IsNumber(r)) running_p = (int)r->valuedouble;
+            if (t && cJSON_IsNumber(t)) total_p   = (int)t->valuedouble;
+            cJSON_Delete(pc);
+        }
     }
 
     snprintf(output, output_size,
@@ -143,8 +173,9 @@ static void action_containers(const char *base_url, const char *env_id, const ch
     char url[256];
     char resp[4096];
 
-    snprintf(url, sizeof(url), "%s/environments/%s/containers", base_url, env_id);
-    if (arcane_request(url, HTTP_METHOD_GET, api_key, resp, sizeof(resp)) != ESP_OK) {
+    build_url(url, sizeof(url), base_url, env_id, "/containers");
+    int st = arcane_request(url, HTTP_METHOD_GET, api_key, resp, sizeof(resp));
+    if (st < 200 || st >= 300) {
         strlcpy(output, resp, output_size);
         return;
     }
@@ -161,7 +192,6 @@ static void action_containers(const char *base_url, const char *env_id, const ch
     for (int i = 0; i < count && off < output_size - 128; i++) {
         cJSON *c = cJSON_GetArrayItem(arr, i);
 
-        /* First name from names[] */
         const char *name = "?";
         cJSON *names = cJSON_GetObjectItem(c, "names");
         if (names && cJSON_IsArray(names) && cJSON_GetArraySize(names) > 0) {
@@ -198,8 +228,9 @@ static void action_stacks(const char *base_url, const char *env_id, const char *
     char url[256];
     char resp[4096];
 
-    snprintf(url, sizeof(url), "%s/environments/%s/projects", base_url, env_id);
-    if (arcane_request(url, HTTP_METHOD_GET, api_key, resp, sizeof(resp)) != ESP_OK) {
+    build_url(url, sizeof(url), base_url, env_id, "/projects");
+    int st = arcane_request(url, HTTP_METHOD_GET, api_key, resp, sizeof(resp));
+    if (st < 200 || st >= 300) {
         strlcpy(output, resp, output_size);
         return;
     }
@@ -247,9 +278,9 @@ static void action_container_lifecycle(const char *base_url, const char *env_id,
     char url[256];
     char resp[4096];
 
-    /* List containers to find by name */
-    snprintf(url, sizeof(url), "%s/environments/%s/containers", base_url, env_id);
-    if (arcane_request(url, HTTP_METHOD_GET, api_key, resp, sizeof(resp)) != ESP_OK) {
+    build_url(url, sizeof(url), base_url, env_id, "/containers");
+    int st = arcane_request(url, HTTP_METHOD_GET, api_key, resp, sizeof(resp));
+    if (st < 200 || st >= 300) {
         strlcpy(output, resp, output_size);
         return;
     }
@@ -287,8 +318,9 @@ static void action_container_lifecycle(const char *base_url, const char *env_id,
         return;
     }
 
-    snprintf(url, sizeof(url), "%s/environments/%s/containers/%s/%s",
-             base_url, env_id, id_buf, action);
+    char path[128];
+    snprintf(path, sizeof(path), "/containers/%s/%s", id_buf, action);
+    build_url(url, sizeof(url), base_url, env_id, path);
     arcane_request(url, HTTP_METHOD_POST, api_key, resp, sizeof(resp));
 
     snprintf(output, output_size, "Container '%s' %s: %s", name, action,
@@ -302,9 +334,9 @@ static void action_stack_lifecycle(const char *base_url, const char *env_id,
     char url[256];
     char resp[4096];
 
-    /* List projects to find by name */
-    snprintf(url, sizeof(url), "%s/environments/%s/projects", base_url, env_id);
-    if (arcane_request(url, HTTP_METHOD_GET, api_key, resp, sizeof(resp)) != ESP_OK) {
+    build_url(url, sizeof(url), base_url, env_id, "/projects");
+    int st = arcane_request(url, HTTP_METHOD_GET, api_key, resp, sizeof(resp));
+    if (st < 200 || st >= 300) {
         strlcpy(output, resp, output_size);
         return;
     }
@@ -336,12 +368,13 @@ static void action_stack_lifecycle(const char *base_url, const char *env_id,
 
     /* Map logical action to Arcane API endpoint verb */
     const char *verb = action;
-    if (strcmp(action, "stack_start") == 0)   verb = "up";
+    if (strcmp(action, "stack_start") == 0)        verb = "up";
     else if (strcmp(action, "stack_stop") == 0)    verb = "down";
     else if (strcmp(action, "stack_restart") == 0) verb = "restart";
 
-    snprintf(url, sizeof(url), "%s/environments/%s/projects/%s/%s",
-             base_url, env_id, id_buf, verb);
+    char path[128];
+    snprintf(path, sizeof(path), "/projects/%s/%s", id_buf, verb);
+    build_url(url, sizeof(url), base_url, env_id, path);
     arcane_request(url, HTTP_METHOD_POST, api_key, resp, sizeof(resp));
 
     snprintf(output, output_size, "Stack '%s' %s: %s", name, verb,

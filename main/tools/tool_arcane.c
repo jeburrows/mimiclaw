@@ -318,7 +318,7 @@ static void action_container_lifecycle(const char *base_url, const char *env_id,
         return;
     }
 
-    char path[128];
+    char path[256];
     snprintf(path, sizeof(path), "/containers/%s/%s", id_buf, action);
     build_url(url, sizeof(url), base_url, env_id, path);
     arcane_request(url, HTTP_METHOD_POST, api_key, resp, sizeof(resp));
@@ -372,7 +372,7 @@ static void action_stack_lifecycle(const char *base_url, const char *env_id,
     else if (strcmp(action, "stack_stop") == 0)    verb = "down";
     else if (strcmp(action, "stack_restart") == 0) verb = "restart";
 
-    char path[128];
+    char path[256];
     snprintf(path, sizeof(path), "/projects/%s/%s", id_buf, verb);
     build_url(url, sizeof(url), base_url, env_id, path);
     arcane_request(url, HTTP_METHOD_POST, api_key, resp, sizeof(resp));

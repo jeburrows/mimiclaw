@@ -198,6 +198,32 @@ static void action_status(const char *base_url, const char *env_id, const char *
              running_c, stopped_c, total_c, running_p, total_p);
 }
 
+static void action_counts(const char *base_url, const char *env_id, const char *api_key,
+                         char *output, size_t output_size)
+{
+    char url[256];
+    char resp[512];
+
+    build_url(url, sizeof(url), base_url, env_id, "/containers/counts");
+    int st = arcane_request(url, HTTP_METHOD_GET, api_key, resp, sizeof(resp));
+    if (st < 200 || st >= 300) {
+        strlcpy(output, resp, output_size);
+        return;
+    }
+
+    cJSON *data = unwrap_data(resp, output, output_size);
+    if (!data) return;
+
+    cJSON *r = cJSON_GetObjectItem(data, "runningContainers");
+    cJSON *s = cJSON_GetObjectItem(data, "stoppedContainers");
+    cJSON *t = cJSON_GetObjectItem(data, "totalContainers");
+    snprintf(output, output_size, "Running: %d, Stopped: %d, Total: %d",
+             (r && cJSON_IsNumber(r)) ? (int)r->valuedouble : -1,
+             (s && cJSON_IsNumber(s)) ? (int)s->valuedouble : -1,
+             (t && cJSON_IsNumber(t)) ? (int)t->valuedouble : -1);
+    cJSON_Delete(data);
+}
+
 static void action_containers(const char *base_url, const char *env_id, const char *api_key,
                               char *output, size_t output_size)
 {
@@ -463,7 +489,10 @@ esp_err_t tool_arcane_execute(const char *input_json, char *output, size_t outpu
 
     ESP_LOGI(TAG, "action=%s name=%s env=%s", action, name, env_id);
 
-    if (strcmp(action, "status") == 0) {
+    if (strcmp(action, "counts") == 0) {
+        action_counts(base_url, env_id, api_key, output, output_size);
+
+    } else if (strcmp(action, "status") == 0) {
         action_status(base_url, env_id, api_key, output, output_size);
 
     } else if (strcmp(action, "containers") == 0) {
@@ -496,7 +525,7 @@ esp_err_t tool_arcane_execute(const char *input_json, char *output, size_t outpu
 
     } else {
         snprintf(output, output_size,
-                 "Error: unknown action '%s'. Valid: status, containers, stacks, "
+                 "Error: unknown action '%s'. Valid: counts, status, containers, stacks, "
                  "start, stop, restart, stack_start, stack_stop, stack_restart",
                  action);
     }

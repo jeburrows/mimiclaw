@@ -173,13 +173,17 @@ static const char *TAG = "skills";
     "You MUST call docker_status for EVERY Docker request. No exceptions.\n" \
     "\n" \
     "## Actions\n" \
-    "- status — quick overview: running/stopped container counts, stack counts\n" \
+    "- counts — container counts only (Running/Stopped/Total). Fastest check.\n" \
+    "- status — container counts + stack summary\n" \
     "- containers — full list of all containers with state and image\n" \
     "- stacks — full list of all stacks with service counts\n" \
     "- start / stop / restart — control a container by name\n" \
     "- stack_start / stack_stop / stack_restart — control a stack by name\n" \
     "\n" \
     "## Examples\n" \
+    "User: \"How many containers are running?\"\n" \
+    "→ docker_status({\"action\": \"counts\"})\n" \
+    "\n" \
     "User: \"How's my Docker server?\"\n" \
     "→ docker_status({\"action\": \"status\"})\n" \
     "\n" \

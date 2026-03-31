@@ -22,6 +22,16 @@ static char s_api_key[LLM_API_KEY_MAX_LEN] = {0};
 static char s_model[LLM_MODEL_MAX_LEN] = MIMI_LLM_DEFAULT_MODEL;
 static char s_provider[16] = MIMI_LLM_PROVIDER_DEFAULT;
 
+#define LLM_OLLAMA_BASE_URL_MAX_LEN 128
+static char s_ollama_base_url[LLM_OLLAMA_BASE_URL_MAX_LEN] = {0};
+static char s_ollama_api_url[LLM_OLLAMA_BASE_URL_MAX_LEN + 32] = {0};
+
+static void rebuild_ollama_api_url(void)
+{
+    snprintf(s_ollama_api_url, sizeof(s_ollama_api_url),
+             "%s/v1/chat/completions", s_ollama_base_url);
+}
+
 static void llm_log_payload(const char *label, const char *payload)
 {
     if (!payload) {
@@ -139,9 +149,16 @@ static bool provider_is_openai(void)
     return strcmp(s_provider, "openai") == 0;
 }
 
+static bool provider_is_ollama(void)
+{
+    return strcmp(s_provider, "ollama") == 0;
+}
+
 static const char *llm_api_url(void)
 {
-    return provider_is_openai() ? MIMI_OPENAI_API_URL : MIMI_LLM_API_URL;
+    if (provider_is_openai()) return MIMI_OPENAI_API_URL;
+    if (provider_is_ollama()) return s_ollama_api_url;
+    return MIMI_LLM_API_URL;
 }
 
 static const char *llm_api_host(void)
@@ -168,6 +185,10 @@ esp_err_t llm_proxy_init(void)
     if (MIMI_SECRET_MODEL_PROVIDER[0] != '\0') {
         safe_copy(s_provider, sizeof(s_provider), MIMI_SECRET_MODEL_PROVIDER);
     }
+    if (MIMI_SECRET_OLLAMA_URL[0] != '\0') {
+        safe_copy(s_ollama_base_url, sizeof(s_ollama_base_url), MIMI_SECRET_OLLAMA_URL);
+        rebuild_ollama_api_url();
+    }
 
     /* NVS overrides take highest priority (set via CLI) */
     nvs_handle_t nvs;
@@ -187,11 +208,24 @@ esp_err_t llm_proxy_init(void)
         if (nvs_get_str(nvs, MIMI_NVS_KEY_PROVIDER, provider_tmp, &len) == ESP_OK && provider_tmp[0]) {
             safe_copy(s_provider, sizeof(s_provider), provider_tmp);
         }
+        char ollama_tmp[LLM_OLLAMA_BASE_URL_MAX_LEN] = {0};
+        len = sizeof(ollama_tmp);
+        if (nvs_get_str(nvs, MIMI_NVS_KEY_OLLAMA_URL, ollama_tmp, &len) == ESP_OK && ollama_tmp[0]) {
+            safe_copy(s_ollama_base_url, sizeof(s_ollama_base_url), ollama_tmp);
+            rebuild_ollama_api_url();
+        }
         nvs_close(nvs);
     }
 
-    if (s_api_key[0]) {
+    if (s_api_key[0] || provider_is_ollama()) {
         ESP_LOGI(TAG, "LLM proxy initialized (provider: %s, model: %s)", s_provider, s_model);
+        if (provider_is_ollama()) {
+            if (s_ollama_base_url[0]) {
+                ESP_LOGI(TAG, "Ollama URL: %s", s_ollama_base_url);
+            } else {
+                ESP_LOGW(TAG, "Ollama URL not set. Use CLI: set_ollama_url <URL>");
+            }
+        }
     } else {
         ESP_LOGW(TAG, "No API key. Use CLI: set_api_key <KEY>");
     }
@@ -209,15 +243,18 @@ static esp_err_t llm_http_direct(const char *post_data, resp_buf_t *rb, int *out
         .timeout_ms = 120 * 1000,
         .buffer_size = 4096,
         .buffer_size_tx = 4096,
-        .crt_bundle_attach = esp_crt_bundle_attach,
     };
+    /* Ollama uses plain HTTP — no TLS certificate bundle needed */
+    if (!provider_is_ollama()) {
+        config.crt_bundle_attach = esp_crt_bundle_attach;
+    }
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (!client) return ESP_FAIL;
 
     esp_http_client_set_method(client, HTTP_METHOD_POST);
     esp_http_client_set_header(client, "Content-Type", "application/json");
-    if (provider_is_openai()) {
+    if (provider_is_openai() || provider_is_ollama()) {
         if (s_api_key[0]) {
             char auth[LLM_API_KEY_MAX_LEN + 16];
             snprintf(auth, sizeof(auth), "Bearer %s", s_api_key);
@@ -305,7 +342,8 @@ static esp_err_t llm_http_via_proxy(const char *post_data, resp_buf_t *rb, int *
 
 static esp_err_t llm_http_call(const char *post_data, resp_buf_t *rb, int *out_status)
 {
-    if (http_proxy_is_enabled()) {
+    /* Ollama is local HTTP — never route through the HTTPS CONNECT proxy */
+    if (http_proxy_is_enabled() && !provider_is_ollama()) {
         return llm_http_via_proxy(post_data, rb, out_status);
     } else {
         return llm_http_direct(post_data, rb, out_status);
@@ -524,7 +562,7 @@ static cJSON *convert_messages_openai(const char *system_prompt, cJSON *messages
 esp_err_t llm_chat(const char *system_prompt, const char *messages_json,
                    char *response_buf, size_t buf_size)
 {
-    if (s_api_key[0] == '\0') {
+    if (s_api_key[0] == '\0' && !provider_is_ollama()) {
         snprintf(response_buf, buf_size, "Error: No API key configured");
         return ESP_ERR_INVALID_STATE;
     }
@@ -539,7 +577,7 @@ esp_err_t llm_chat(const char *system_prompt, const char *messages_json,
         cJSON_AddNumberToObject(body, "max_tokens", MIMI_LLM_MAX_TOKENS);
     }
 
-    if (provider_is_openai()) {
+    if (provider_is_openai() || provider_is_ollama()) {
         cJSON *messages = cJSON_Parse(messages_json);
         if (!messages) {
             messages = cJSON_CreateArray();
@@ -616,7 +654,7 @@ esp_err_t llm_chat(const char *system_prompt, const char *messages_json,
         return ESP_FAIL;
     }
 
-    if (provider_is_openai()) {
+    if (provider_is_openai() || provider_is_ollama()) {
         extract_text_openai(root, response_buf, buf_size);
     } else {
         extract_text_anthropic(root, response_buf, buf_size);
@@ -654,7 +692,7 @@ esp_err_t llm_chat_tools(const char *system_prompt,
 {
     memset(resp, 0, sizeof(*resp));
 
-    if (s_api_key[0] == '\0') return ESP_ERR_INVALID_STATE;
+    if (s_api_key[0] == '\0' && !provider_is_ollama()) return ESP_ERR_INVALID_STATE;
 
     /* Build request body (non-streaming) */
     cJSON *body = cJSON_CreateObject();
@@ -666,7 +704,7 @@ esp_err_t llm_chat_tools(const char *system_prompt,
         cJSON_AddNumberToObject(body, "max_tokens", MIMI_LLM_MAX_TOKENS);
     }
 
-    if (provider_is_openai()) {
+    if (provider_is_openai() || provider_is_ollama()) {
         cJSON *openai_msgs = convert_messages_openai(system_prompt, messages);
         cJSON_AddItemToObject(body, "messages", openai_msgs);
 
@@ -736,7 +774,7 @@ esp_err_t llm_chat_tools(const char *system_prompt,
         return ESP_FAIL;
     }
 
-    if (provider_is_openai()) {
+    if (provider_is_openai() || provider_is_ollama()) {
         cJSON *choices = cJSON_GetObjectItem(root, "choices");
         cJSON *choice0 = choices && cJSON_IsArray(choices) ? cJSON_GetArrayItem(choices, 0) : NULL;
         if (choice0) {
@@ -908,5 +946,20 @@ esp_err_t llm_set_provider(const char *provider)
 
     safe_copy(s_provider, sizeof(s_provider), provider);
     ESP_LOGI(TAG, "Provider set to: %s", s_provider);
+    return ESP_OK;
+}
+
+esp_err_t llm_set_ollama_url(const char *url)
+{
+    safe_copy(s_ollama_base_url, sizeof(s_ollama_base_url), url);
+    rebuild_ollama_api_url();
+
+    nvs_handle_t nvs;
+    ESP_ERROR_CHECK(nvs_open(MIMI_NVS_LLM, NVS_READWRITE, &nvs));
+    ESP_ERROR_CHECK(nvs_set_str(nvs, MIMI_NVS_KEY_OLLAMA_URL, url));
+    ESP_ERROR_CHECK(nvs_commit(nvs));
+    nvs_close(nvs);
+
+    ESP_LOGI(TAG, "Ollama URL set to: %s", s_ollama_base_url);
     return ESP_OK;
 }

@@ -18,9 +18,14 @@ esp_err_t llm_proxy_init(void);
 esp_err_t llm_set_api_key(const char *api_key);
 
 /**
- * Save the LLM provider to NVS. (e.g. "anthropic", "openai")
+ * Save the LLM provider to NVS. (e.g. "anthropic", "openai", "ollama")
  */
 esp_err_t llm_set_provider(const char *provider);
+
+/**
+ * Save the Ollama base URL to NVS. (e.g. "http://192.168.1.100:11434")
+ */
+esp_err_t llm_set_ollama_url(const char *url);
 
 /**
  * Save the model identifier to NVS.

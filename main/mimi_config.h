@@ -46,6 +46,9 @@
 #ifndef MIMI_SECRET_ARCANE_ENV_ID
 #define MIMI_SECRET_ARCANE_ENV_ID   "1"
 #endif
+#ifndef MIMI_SECRET_OLLAMA_URL
+#define MIMI_SECRET_OLLAMA_URL      ""
+#endif
 
 /* WiFi */
 #define MIMI_WIFI_MAX_RETRY          10
@@ -136,3 +139,4 @@
 #define MIMI_NVS_KEY_PROVIDER        "provider"
 #define MIMI_NVS_KEY_PROXY_HOST      "host"
 #define MIMI_NVS_KEY_PROXY_PORT      "port"
+#define MIMI_NVS_KEY_OLLAMA_URL      "ollama_url"

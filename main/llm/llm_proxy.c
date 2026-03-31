@@ -28,6 +28,11 @@ static char s_ollama_api_url[LLM_OLLAMA_BASE_URL_MAX_LEN + 32] = {0};
 
 static void rebuild_ollama_api_url(void)
 {
+    /* Strip trailing slash so user can pass either form */
+    size_t len = strlen(s_ollama_base_url);
+    while (len > 0 && s_ollama_base_url[len - 1] == '/') {
+        s_ollama_base_url[--len] = '\0';
+    }
     snprintf(s_ollama_api_url, sizeof(s_ollama_api_url),
              "%s/v1/chat/completions", s_ollama_base_url);
 }
@@ -589,6 +594,9 @@ esp_err_t llm_chat(const char *system_prompt, const char *messages_json,
         cJSON *openai_msgs = convert_messages_openai(system_prompt, messages);
         cJSON_Delete(messages);
         cJSON_AddItemToObject(body, "messages", openai_msgs);
+        if (provider_is_ollama()) {
+            cJSON_AddFalseToObject(body, "stream");
+        }
     } else {
         cJSON_AddStringToObject(body, "system", system_prompt);
         cJSON *messages = cJSON_Parse(messages_json);
@@ -714,6 +722,9 @@ esp_err_t llm_chat_tools(const char *system_prompt,
                 cJSON_AddItemToObject(body, "tools", tools);
                 cJSON_AddStringToObject(body, "tool_choice", "auto");
             }
+        }
+        if (provider_is_ollama()) {
+            cJSON_AddFalseToObject(body, "stream");
         }
     } else {
         cJSON_AddStringToObject(body, "system", system_prompt);
